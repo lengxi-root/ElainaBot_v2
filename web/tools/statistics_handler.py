@@ -304,6 +304,25 @@ def _gather_stats(force=False, selected_date='', appid_filter=''):
     # 每小时分布 (24h)
     hourly_dist = [hourly.get(f'{h:02d}', 0) for h in range(24)]
 
+    # 昨日每小时分布 (供前端 12 小时图跨越零点)
+    yesterday_hourly_dist = None
+    if not selected_date:
+        yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+        yh = {}
+        for _appid, inst in _iter_bots(appid_filter):
+            try:
+                hr_rows = inst.log_service.query(
+                    'message',
+                    "SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c FROM log GROUP BY hr",
+                    date=yesterday)
+                for r in hr_rows:
+                    h = r.get('hr', '')
+                    if h:
+                        yh[h] = yh.get(h, 0) + r.get('c', 0)
+            except Exception:
+                pass
+        yesterday_hourly_dist = [yh.get(f'{h:02d}', 0) for h in range(24)]
+
     top_groups = sorted(group_msg.items(), key=lambda x: x[1], reverse=True)[:10]
     top_users = sorted(user_msg.items(), key=lambda x: x[1], reverse=True)[:10]
     top_commands = sorted(cmd_msg.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -336,6 +355,7 @@ def _gather_stats(force=False, selected_date='', appid_filter=''):
                 'peak_hour_count': peak_hour_count,
             },
             'hourly_distribution': hourly_dist,
+            'yesterday_hourly_distribution': yesterday_hourly_dist,
             'top_groups': [{'group_id': g, 'message_count': c} for g, c in top_groups],
             'top_users': [{'user_id': u, 'message_count': c} for u, c in top_users],
             'top_commands': [{'command': cmd, 'count': c} for cmd, c in top_commands],
