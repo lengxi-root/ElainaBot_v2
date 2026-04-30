@@ -1,4 +1,4 @@
-"""日志查询 (aiohttp 版) — 从 SQLite 分页读取 + 登录日志"""
+"""日志查询 — 分页读取 + 登录日志"""
 
 from aiohttp import web
 import web.auth as auth

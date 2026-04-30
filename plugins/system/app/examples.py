@@ -162,3 +162,57 @@ async def test_send_image_proactive(event, match):
         await event.reply_image(
             "https://i0.hdslb.com/bfs/openplatform/559162218f455ea859c783dceeda65cb1c724f4c.png",
             "📸 主动图片", target_user_id=target_id)
+
+
+# ==================== Web 面板示例 ====================
+# Web 面板挂载在 HTTP 服务器上, 访问地址: http://<host>:<port>/web/
+# 默认端口在 settings.yaml → server.port (默认 5001)
+# 面板提供: 仪表盘、消息记录、插件管理、日志查看、统计、数据库、框架更新等功能
+#
+# 以下示例展示如何在插件中与 Web 面板交互:
+#   1. 通过 WebSocket 推送实时消息到面板
+#   2. 注册自定义 API 路由
+#   3. 读取面板配置
+
+@handler(r'^面板推送$', name='面板推送', desc='向 Web 面板推送一条自定义日志', owner_only=True)
+async def push_to_panel(event, match):
+    try:
+        import web.ws as ws
+        from datetime import datetime
+        entry = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'content': f'来自插件的推送测试 (用户: {event.user_id})',
+            'source': 'plugin.system.examples',
+            'level': 'INFO',
+        }
+        ws.push_log('framework', entry)
+        await event.reply("✅ 已推送日志到 Web 面板\n请在面板「日志」页查看")
+    except Exception as e:
+        await event.reply(f"❌ 推送失败: {e}")
+
+
+@handler(r'^面板状态$', name='面板状态', desc='查看 Web 面板运行状态', owner_only=True)
+async def panel_status(event, match):
+    try:
+        import web.ws as ws
+        from core.base.config import cfg
+        port = cfg.get('settings', 'server.port', 5001)
+        client_count = len(ws._clients) if hasattr(ws, '_clients') else '未知'
+        await event.reply(
+            f"📊 Web 面板状态\n"
+            f"端口: {port}\n"
+            f"WebSocket 连接数: {client_count}\n"
+            f"面板路径: /web/")
+    except Exception as e:
+        await event.reply(f"❌ 获取状态失败: {e}")
+
+
+@handler(r'^面板广播\s+(.+)$', name='面板广播', desc='向所有面板客户端广播消息', owner_only=True)
+async def panel_broadcast(event, match):
+    content = match.group(1)
+    try:
+        import web.ws as ws
+        ws.broadcast({'type': 'notification', 'message': content})
+        await event.reply(f"✅ 已广播到所有面板客户端: {content}")
+    except Exception as e:
+        await event.reply(f"❌ 广播失败: {e}")

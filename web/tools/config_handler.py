@@ -1,4 +1,4 @@
-"""配置文件管理 (aiohttp 版) — YAML 配置读写"""
+"""配置文件管理 — YAML 配置读写"""
 
 import os
 from datetime import datetime

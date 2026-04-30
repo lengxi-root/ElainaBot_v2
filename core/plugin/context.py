@@ -90,7 +90,7 @@ class PluginInfo:
     """已加载插件的信息"""
     __slots__ = ('name', 'plugin_dir', 'module', 'handlers', 'on_load_funcs',
                  'on_unload_funcs', 'interceptors', 'enabled', 'load_time',
-                 'error', 'ctx', 'is_large')
+                 'error', 'ctx', 'is_large', 'meta')
 
     def __init__(self, name, plugin_dir):
         self.name = name
@@ -105,6 +105,7 @@ class PluginInfo:
         self.error = None
         self.ctx = None
         self.is_large = False
+        self.meta = {}  # __plugin_meta__ from module
 
 
 def _make_reply_log_cb(plugin_name, log_service):

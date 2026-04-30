@@ -1,4 +1,4 @@
-"""插件文件管理 (aiohttp 版) — 扫描/启禁/读写/创建/上传"""
+"""插件管理 — 扫描/启禁/读写/创建/上传"""
 
 import os
 import re
@@ -115,6 +115,7 @@ def _scan_plugins():
             'enabled': enabled,
             'commands': pinfo.get('commands', []),
             'description': pinfo.get('description', ''),
+            'meta': pinfo.get('meta', {}),
         })
 
     result.sort(key=lambda x: (0 if x['status'] == 'loaded' else 1))
@@ -196,6 +197,7 @@ def _scan_plugin_dirs():
             'files': files,
             'commands': pinfo.get('commands', []),
             'description': pinfo.get('description', ''),
+            'meta': pinfo.get('meta', {}),
         })
 
     return dirs

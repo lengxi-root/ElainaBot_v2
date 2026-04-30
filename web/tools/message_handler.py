@@ -1,7 +1,4 @@
-"""消息管理 (aiohttp 版) — 聊天列表/历史/发送/昵称
-
-从各机器人的 SQLite (LogService) 读取消息记录。
-"""
+"""消息管理 — 聊天列表/历史/发送/昵称"""
 
 import json
 import time

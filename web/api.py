@@ -1,8 +1,4 @@
-"""Web 面板 API 路由 (aiohttp)
-
-所有 /api/* 路由在此注册, 由 web.setup() 挂载到主 aiohttp app 上。
-工具模块位于 web.tools.* , 每个模块导出 handle_* 函数。
-"""
+"""Web 面板 API 路由"""
 
 import logging
 from datetime import datetime
@@ -101,31 +97,24 @@ def get_routes() -> list:
         web.post('/api/update/start', _(update_handler.handle_start_update)),
         web.get('/api/update/progress', _(update_handler.handle_get_update_progress)),
         web.get('/api/update/mirrors', _(update_handler.handle_get_mirrors)),
-        web.post('/api/update/test-mirrors', _(update_handler.handle_test_mirrors)),
+        web.get('/api/update/test-mirrors', _(update_handler.handle_test_mirrors)),
         web.post('/api/update/mirror', _(update_handler.handle_set_custom_mirror)),
         web.post('/api/update/upload', _(update_handler.handle_upload_update)),
 
         # ── 重启 ──
         web.post('/api/bot/restart', _(bot_restart.handle_restart)),
 
-        # ── 插件市场 ──
+        # ── 插件市场 (GitHub 插件库) ──
         web.get('/api/market/list', _(plugin_market_handler.handle_market_list)),
         web.get('/api/market/categories', _(plugin_market_handler.handle_market_categories)),
         web.post('/api/market/detail', _(plugin_market_handler.handle_market_detail)),
-        web.post('/api/market/download', _(plugin_market_handler.handle_market_download)),
+        web.post('/api/market/refresh', _(plugin_market_handler.handle_market_refresh)),
         web.post('/api/market/preview', _(plugin_market_handler.handle_market_preview)),
         web.post('/api/market/install', _(plugin_market_handler.handle_market_install)),
-        web.post('/api/market/submit', _(plugin_market_handler.handle_market_submit)),
-        web.post('/api/market/register', _(plugin_market_handler.handle_market_register)),
-        web.post('/api/market/login', _(plugin_market_handler.handle_market_login)),
-        web.post('/api/market/user-info', _(plugin_market_handler.handle_market_user_info)),
+        web.post('/api/market/uninstall', _(plugin_market_handler.handle_market_uninstall)),
         web.get('/api/market/local', _(plugin_market_handler.handle_local_plugins)),
         web.post('/api/market/local/read', _(plugin_market_handler.handle_local_plugin_read)),
         web.post('/api/market/local/save', _(plugin_market_handler.handle_local_plugin_save)),
-        web.post('/api/market/local/upload', _(plugin_market_handler.handle_market_upload_local)),
-        web.post('/api/market/upload-direct', _(plugin_market_handler.handle_market_upload_direct)),
-        web.post('/api/market/author-update', _(plugin_market_handler.handle_market_author_update)),
-        web.post('/api/market/author-delete', _(plugin_market_handler.handle_market_author_delete)),
 
         # ── OpenAPI ──
         web.post('/api/openapi/start-login', _(openapi_handler.handle_start_login)),

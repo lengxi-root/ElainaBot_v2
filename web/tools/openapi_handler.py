@@ -1,4 +1,4 @@
-"""QQ 开放平台 API (aiohttp 版) — 扫码登录/数据查询/模板管理/白名单"""
+"""QQ 开放平台 API — 扫码登录/数据查询/模板管理/白名单"""
 
 import os
 import re

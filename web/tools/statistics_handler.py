@@ -1,4 +1,4 @@
-"""统计数据 (aiohttp 版) — DAU / 消息统计"""
+"""统计数据 — DAU / 消息统计"""
 
 import time
 import uuid

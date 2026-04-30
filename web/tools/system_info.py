@@ -1,4 +1,4 @@
-"""系统信息采集 (aiohttp 版)"""
+"""系统信息采集"""
 
 import os
 import gc

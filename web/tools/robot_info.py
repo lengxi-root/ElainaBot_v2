@@ -1,4 +1,4 @@
-"""机器人信息查询 (aiohttp 版)"""
+"""机器人信息查询"""
 
 import ssl
 import urllib.parse

@@ -1,10 +1,10 @@
-"""插件市场 (aiohttp 版) — 远程插件列表/安装/上传/预览"""
+"""插件市场 — GitHub 插件库 + 本地插件管理"""
 
 import os
 import re
-import hashlib
-import base64
 import io
+import json
+import time
 import zipfile
 import logging
 
@@ -13,55 +13,61 @@ from aiohttp import web
 
 log = logging.getLogger('ElainaBot.web.market')
 
-PHP_API_URL = 'https://i.elaina.vin/api/elainabot/cjsc.php'
-TIMEOUT = 120
+# ==================== GitHub 插件库配置 ====================
+PLUGIN_REPO = 'ElainaCore/Elaina-plugins'
+PLUGIN_JSON_RAW = f'https://raw.githubusercontent.com/{PLUGIN_REPO}/main/plugins.json'
+# 镜像列表 (从 updater 复用)
+_PLUGIN_JSON_MIRRORS = [
+    PLUGIN_JSON_RAW,  # 直连
+    f'https://ghproxy.cc/https://raw.githubusercontent.com/{PLUGIN_REPO}/main/plugins.json',
+    f'https://gh-proxy.com/https://raw.githubusercontent.com/{PLUGIN_REPO}/main/plugins.json',
+    f'https://gh.llkk.cc/https://raw.githubusercontent.com/{PLUGIN_REPO}/main/plugins.json',
+    f'https://gh.idayer.com/https://raw.githubusercontent.com/{PLUGIN_REPO}/main/plugins.json',
+]
+
 _base_dir = ''
-_appid = ''
-_robot_qq = ''
+_plugin_cache = None   # 缓存的插件列表
+_plugin_cache_ts = 0
+_PLUGIN_CACHE_TTL = 10 * 60  # 10 分钟
 
 
 def set_context(base_dir: str, appid: str = '', robot_qq: str = ''):
-    global _base_dir, _appid, _robot_qq
+    global _base_dir
     _base_dir = base_dir
-    _appid = appid
-    _robot_qq = robot_qq
 
 
 def _plugins_dir():
     return os.path.join(_base_dir, 'plugins')
 
 
-def _author_token():
-    raw = f"{_appid}:{_robot_qq}"
-    md5 = hashlib.md5(raw.encode()).hexdigest()
-    return base64.b64encode(f"{_appid}_{md5[:16]}".encode()).decode()
+async def _fetch_plugin_json(force=False):
+    """从 GitHub 获取 plugins.json, 带缓存和镜像回退"""
+    global _plugin_cache, _plugin_cache_ts
+    now = time.time()
+    if not force and _plugin_cache and (now - _plugin_cache_ts) < _PLUGIN_CACHE_TTL:
+        return _plugin_cache
 
-
-async def _call_php(action, data=None, params=None, token=None):
-    headers = {}
-    if token:
-        headers['X-Admin-Token'] = token
-    url = f"{PHP_API_URL}?action={action}"
-    if params:
-        for k, v in params.items():
-            url += f"&{k}={v}"
-    try:
-        async with _aiohttp.ClientSession() as session:
-            if data:
-                async with session.post(url, json=data, headers=headers,
-                                        timeout=_aiohttp.ClientTimeout(total=TIMEOUT),
-                                        ssl=False) as resp:
-                    return await resp.json()
-            else:
-                async with session.get(url, headers=headers,
-                                       timeout=_aiohttp.ClientTimeout(total=TIMEOUT),
-                                       ssl=False) as resp:
-                    return await resp.json()
-    except Exception as e:
-        return {'success': False, 'message': str(e)}
+    headers = {'User-Agent': 'ElainaBot/1.0'}
+    timeout = _aiohttp.ClientTimeout(total=10)
+    async with _aiohttp.ClientSession() as session:
+        for url in _PLUGIN_JSON_MIRRORS:
+            try:
+                async with session.get(url, headers=headers, timeout=timeout,
+                                       ssl=False, allow_redirects=True) as resp:
+                    if resp.status == 200:
+                        body = await resp.read()
+                        if body[:1] in (b'[', b'{'):
+                            data = json.loads(body)
+                            _plugin_cache = data
+                            _plugin_cache_ts = now
+                            return data
+            except Exception:
+                continue
+    return None
 
 
 def _convert_github_url(url):
+    """将 GitHub blob URL 转为 raw URL"""
     if 'raw.githubusercontent.com' in url or '/raw/' in url:
         return url
     m = re.match(r'https?://github\.com/([^/]+)/([^/]+)/blob/([^/]+)/(.+)', url)
@@ -71,52 +77,106 @@ def _convert_github_url(url):
     return url
 
 
-# ==================== 市场列表/搜索 ====================
+def _repo_raw_url(repo_url, path, branch='main'):
+    """将 GitHub 仓库 URL + 仓库内路径转为 raw 下载地址
+    https://github.com/user/repo + plugins/hello.py → https://raw.githubusercontent.com/user/repo/main/plugins/hello.py
+    """
+    m = re.match(r'https?://github\.com/([^/]+)/([^/]+)', repo_url)
+    if m:
+        user, repo = m.groups()
+        return f'https://raw.githubusercontent.com/{user}/{repo}/{branch}/{path.lstrip("/")}'
+    return repo_url
+
+
+def _github_to_archive(url, branch='main'):
+    """将 GitHub 仓库 URL 转为 zip 下载地址
+    https://github.com/user/repo  →  https://github.com/user/repo/archive/refs/heads/main.zip
+    已经是 archive/codeload URL 则直接返回
+    """
+    if '/archive/' in url or 'codeload.github.com' in url:
+        return url
+    m = re.match(r'https?://github\.com/([^/]+)/([^/]+)/?$', url.rstrip('/'))
+    if m:
+        user, repo = m.groups()
+        return f'https://github.com/{user}/{repo}/archive/refs/heads/{branch}.zip'
+    return url
+
+
+# ==================== 市场列表 ====================
 
 async def handle_market_list(request: web.Request):
-    params = {k: v for k, v in {
-        'category': request.query.get('category', ''),
-        'status': request.query.get('status', ''),
-        'search': request.query.get('search', ''),
-    }.items() if v}
-    return web.json_response(await _call_php('list', params=params))
+    """获取插件市场列表"""
+    search = request.query.get('search', '').lower()
+    category = request.query.get('category', '')
+    data = await _fetch_plugin_json()
+    if data is None:
+        return web.json_response({'success': False, 'message': '无法连接插件库, 请检查网络'})
+
+    plugins = data if isinstance(data, list) else data.get('plugins', [])
+
+    if category:
+        plugins = [p for p in plugins if p.get('category', '') == category]
+    if search:
+        plugins = [p for p in plugins
+                   if search in p.get('name', '').lower()
+                   or search in p.get('description', '').lower()
+                   or search in p.get('author', '').lower()]
+
+    # 标记已安装状态
+    installed = _get_installed_names()
+    for p in plugins:
+        safe = "".join(c for c in p.get('name', '') if c.isalnum() or c in ('_', '-', ' ')).strip()
+        p['installed'] = safe in installed
+
+    return web.json_response({'success': True, 'data': plugins, 'total': len(plugins)})
 
 
 async def handle_market_categories(request: web.Request):
-    return web.json_response(await _call_php('categories'))
+    """获取插件分类列表"""
+    data = await _fetch_plugin_json()
+    if data is None:
+        return web.json_response({'success': False, 'message': '无法连接插件库'})
+    plugins = data if isinstance(data, list) else data.get('plugins', [])
+    cats = sorted(set(p.get('category', '未分类') for p in plugins))
+    return web.json_response({'success': True, 'data': cats})
 
 
 async def handle_market_detail(request: web.Request):
+    """获取插件详情"""
     body = await request.json()
-    return web.json_response(await _call_php('plugin_detail', body))
+    name = body.get('name', '')
+    data = await _fetch_plugin_json()
+    if data is None:
+        return web.json_response({'success': False, 'message': '无法连接插件库'})
+    plugins = data if isinstance(data, list) else data.get('plugins', [])
+    for p in plugins:
+        if p.get('name') == name:
+            return web.json_response({'success': True, 'data': p})
+    return web.json_response({'success': False, 'message': '插件不存在'})
 
 
-# ==================== 下载/预览/安装 ====================
+async def handle_market_refresh(request: web.Request):
+    """强制刷新插件库缓存"""
+    data = await _fetch_plugin_json(force=True)
+    if data is None:
+        return web.json_response({'success': False, 'message': '刷新失败, 无法连接插件库'})
+    plugins = data if isinstance(data, list) else data.get('plugins', [])
+    return web.json_response({'success': True, 'message': f'已刷新, 共 {len(plugins)} 个插件'})
 
-async def handle_market_download(request: web.Request):
-    body = await request.json()
-    return web.json_response(await _call_php('download', body))
 
+# ==================== 预览/安装 ====================
 
 async def handle_market_preview(request: web.Request):
     body = await request.json()
     url = body.get('url', '')
-    use_proxy = body.get('use_proxy', False)
     if not url:
         return web.json_response({'success': False, 'message': '缺少 URL'}, status=400)
 
     url = _convert_github_url(url)
-    if use_proxy and ('github.com' in url or 'githubusercontent.com' in url):
-        url = re.sub(r'https://(raw\.)?githubusercontent\.com',
-                     r'https://ghfast.top/https://\1githubusercontent.com', url)
-        url = url.replace('https://github.com', 'https://ghfast.top/https://github.com')
-
     try:
-        async with _aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=_aiohttp.ClientTimeout(total=30), ssl=False) as resp:
-                if resp.status != 200:
-                    return web.json_response({'success': False, 'message': f'下载失败: HTTP {resp.status}'})
-                content = await resp.read()
+        content = await _download_file(url)
+        if content is None:
+            return web.json_response({'success': False, 'message': '下载失败'})
 
         if b'<!doctype html' in content[:100].lower() or b'<html' in content[:100].lower():
             return web.json_response({'success': False, 'message': '下载链接无效'})
@@ -137,41 +197,44 @@ async def handle_market_preview(request: web.Request):
         return web.json_response({'success': False, 'message': str(e)})
 
 
-def _preview_zip(content):
-    try:
-        with zipfile.ZipFile(io.BytesIO(content), 'r') as zf:
-            py_files = [f for f in zf.namelist() if f.endswith('.py') and not f.startswith('__') and '/__pycache__/' not in f]
-            files = []
-            for pf in py_files[:10]:
-                try:
-                    fc = zf.read(pf).decode('utf-8', errors='replace')
-                    files.append({'name': pf, 'content': fc[:5000], 'size': len(fc)})
-                except Exception:
-                    pass
-            return web.json_response({'success': True, 'type': 'zip', 'files': files, 'total_files': len(py_files)})
-    except Exception as e:
-        return web.json_response({'success': False, 'message': str(e)})
-
-
 async def handle_market_install(request: web.Request):
+    """安装插件: 支持 GitHub 仓库 URL / 仓库内指定文件 / zip / 单 py
+    请求体:
+        name     — 插件名 (用作 plugins/<name> 目录名)
+        url      — 下载地址 (支持 GitHub 仓库链接, 自动转为 archive zip)
+        github   — 等同于 url, 兼容 plugins.json 中的 github 字段
+        path     — 仓库内文件路径 (如 plugins/hello/hello.py), 有此字段时只下载该文件
+        branch   — 分支名, 默认 main
+    """
     body = await request.json()
-    url = body.get('url', '')
+    github_url = body.get('github', '') or body.get('url', '') or body.get('download_url', '')
     plugin_name = body.get('name', 'unknown_plugin')
-    use_proxy = body.get('use_proxy', False)
-    if not url:
-        return web.json_response({'success': False, 'message': '缺少 URL'}, status=400)
-
-    url = _convert_github_url(url)
-    if use_proxy and ('github.com' in url or 'githubusercontent.com' in url):
-        url = re.sub(r'https://(raw\.)?githubusercontent\.com',
-                     r'https://ghfast.top/https://\1githubusercontent.com', url)
+    file_path = body.get('path', '')
+    branch = body.get('branch', 'main')
+    if not github_url:
+        return web.json_response({'success': False, 'message': '缺少下载地址'}, status=400)
 
     try:
-        async with _aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=_aiohttp.ClientTimeout(total=60), ssl=False) as resp:
-                if resp.status != 200:
-                    return web.json_response({'success': False, 'message': f'HTTP {resp.status}'})
-                content = await resp.read()
+        # 有 path → 从仓库下载单个文件
+        if file_path:
+            url = _repo_raw_url(github_url, file_path, branch)
+            log.info(f"插件安装 (单文件): {plugin_name} ← {url}")
+            content = await _download_file(url)
+            if content is None:
+                return web.json_response({'success': False, 'message': '文件下载失败, 请检查路径或网络'})
+            return web.json_response(_install_py(content, plugin_name, url))
+
+        # 无 path → 拉取整个仓库 zip
+        is_repo = bool(re.match(r'https?://github\.com/[^/]+/[^/]+/?$', github_url.rstrip('/')))
+        if is_repo:
+            url = _github_to_archive(github_url, branch)
+            log.info(f"插件安装 (仓库): {plugin_name} ← {url}")
+        else:
+            url = _convert_github_url(github_url)
+
+        content = await _download_file(url)
+        if content is None:
+            return web.json_response({'success': False, 'message': '下载失败, 请检查网络或镜像'})
 
         if content[:4] == b'PK\x03\x04':
             return web.json_response(_install_zip(content, plugin_name))
@@ -181,6 +244,58 @@ async def handle_market_install(request: web.Request):
             return web.json_response(_install_py(content, plugin_name, url))
         return web.json_response({'success': False, 'message': '不支持的文件类型'})
     except Exception as e:
+        log.error(f"插件安装失败 [{plugin_name}]: {e}")
+        return web.json_response({'success': False, 'message': str(e)})
+
+
+# ==================== 下载辅助 ====================
+
+async def _download_file(url, timeout=60):
+    """通过镜像或直连下载文件"""
+    from web.tools.updater import GITHUB_FILE_MIRRORS, _build_mirror_url
+    urls = [url]
+    if 'github.com' in url or 'githubusercontent.com' in url:
+        # 取缓存的快镜像, 无缓存则用前 3 个默认镜像
+        try:
+            from web.tools.updater import _mirror_cache
+            mirrors = _mirror_cache or []
+        except Exception:
+            mirrors = []
+        for m in (mirrors or GITHUB_FILE_MIRRORS)[:3]:
+            mirror = m['mirror'] if isinstance(m, dict) else m
+            if mirror:
+                urls.append(_build_mirror_url(url, mirror))
+
+    async with _aiohttp.ClientSession() as session:
+        for u in urls:
+            try:
+                async with session.get(u, timeout=_aiohttp.ClientTimeout(total=timeout),
+                                       ssl=False, allow_redirects=True,
+                                       headers={'User-Agent': 'ElainaBot/1.0'}) as resp:
+                    if resp.status == 200:
+                        return await resp.read()
+            except Exception:
+                continue
+    return None
+
+
+# ==================== 安装辅助 ====================
+
+def _preview_zip(content):
+    try:
+        with zipfile.ZipFile(io.BytesIO(content), 'r') as zf:
+            py_files = [f for f in zf.namelist()
+                        if f.endswith('.py') and not f.startswith('__') and '/__pycache__/' not in f]
+            files = []
+            for pf in py_files[:10]:
+                try:
+                    fc = zf.read(pf).decode('utf-8', errors='replace')
+                    files.append({'name': pf, 'content': fc[:5000], 'size': len(fc)})
+                except Exception:
+                    pass
+            return web.json_response({'success': True, 'type': 'zip', 'files': files,
+                                      'total_files': len(py_files)})
+    except Exception as e:
         return web.json_response({'success': False, 'message': str(e)})
 
 
@@ -189,7 +304,8 @@ def _install_py(content, plugin_name, url):
     fname = url.split('/')[-1].split('?')[0]
     if not fname.endswith('.py'):
         fname = f"{plugin_name}.py"
-    safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip() or fname.replace('.py', '')
+    safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip() \
+        or fname.replace('.py', '')
     dest_dir = os.path.join(plugins_dir, safe)
     os.makedirs(dest_dir, exist_ok=True)
     with open(os.path.join(dest_dir, fname), 'wb') as f:
@@ -198,6 +314,7 @@ def _install_py(content, plugin_name, url):
 
 
 def _install_zip(content, plugin_name):
+    """解压 zip 到 plugins/<plugin_name>/, 自动去除 GitHub archive 的根目录"""
     plugins_dir = _plugins_dir()
     safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip() or 'unknown'
     dest_dir = os.path.join(plugins_dir, safe)
@@ -206,13 +323,14 @@ def _install_zip(content, plugin_name):
             flist = zf.namelist()
             if not flist:
                 return {'success': False, 'message': '空压缩包'}
+            # GitHub archive zip 总有一个根目录 (如 repo-main/), 自动去除
             roots = {f.split('/')[0] for f in flist if '/' in f and f.split('/')[0]}
             strip_root = len(roots) == 1
             root_prefix = list(roots)[0] + '/' if strip_root else ''
             os.makedirs(dest_dir, exist_ok=True)
             extracted = []
             for fp in flist:
-                if fp.endswith('/') or '__pycache__' in fp:
+                if fp.endswith('/') or '__pycache__' in fp or '/.git/' in fp:
                     continue
                 rel = fp[len(root_prefix):] if strip_root and fp.startswith(root_prefix) else fp
                 if not rel:
@@ -223,33 +341,53 @@ def _install_zip(content, plugin_name):
                     dst.write(src.read())
                 extracted.append(rel)
             py_count = sum(1 for f in extracted if f.endswith('.py'))
-            return {'success': True, 'message': f'已安装到 plugins/{safe}/ ({py_count} 个 Python 文件)'}
+            total = len(extracted)
+            log.info(f"插件 {safe} 安装完成: {total} 个文件 ({py_count} 个 .py)")
+            return {'success': True,
+                    'message': f'已安装到 plugins/{safe}/ ({total} 个文件, {py_count} 个 Python)',
+                    'path': f'plugins/{safe}',
+                    'files': total}
     except Exception as e:
         return {'success': False, 'message': str(e)}
 
 
-# ==================== 提交/用户 ====================
+# ==================== 卸载 ====================
 
-async def handle_market_submit(request: web.Request):
+async def handle_market_uninstall(request: web.Request):
+    """卸载已安装的插件 (删除 plugins/<name> 目录)"""
     body = await request.json()
-    body['author_token'] = _author_token()
-    body['submit_appid'] = _appid
-    return web.json_response(await _call_php('submit', body))
+    plugin_name = body.get('name', '')
+    if not plugin_name:
+        return web.json_response({'success': False, 'message': '缺少插件名'}, status=400)
+
+    safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip()
+    if not safe:
+        return web.json_response({'success': False, 'message': '无效插件名'}, status=400)
+
+    dest_dir = os.path.join(_plugins_dir(), safe)
+    if not os.path.isdir(dest_dir):
+        return web.json_response({'success': False, 'message': f'plugins/{safe} 不存在'})
+
+    # 安全检查: 不能删除 system 插件
+    if safe == 'system':
+        return web.json_response({'success': False, 'message': '系统插件不可卸载'})
+
+    import shutil
+    try:
+        shutil.rmtree(dest_dir)
+        log.info(f"插件 {safe} 已卸载 (目录已删除)")
+        return web.json_response({'success': True, 'message': f'已卸载 plugins/{safe}'})
+    except Exception as e:
+        return web.json_response({'success': False, 'message': f'删除失败: {e}'})
 
 
-async def handle_market_register(request: web.Request):
-    body = await request.json()
-    body['robot_qq'] = _robot_qq
-    body['appid'] = _appid
-    return web.json_response(await _call_php('register', body))
-
-
-async def handle_market_login(request: web.Request):
-    return web.json_response(await _call_php('login', await request.json()))
-
-
-async def handle_market_user_info(request: web.Request):
-    return web.json_response(await _call_php('user_info', await request.json()))
+def _get_installed_names():
+    """获取已安装的插件目录名列表"""
+    plugins_dir = _plugins_dir()
+    if not os.path.isdir(plugins_dir):
+        return set()
+    return {d for d in os.listdir(plugins_dir)
+            if os.path.isdir(os.path.join(plugins_dir, d)) and not d.startswith(('.', '__'))}
 
 
 # ==================== 本地插件管理 ====================
@@ -329,41 +467,3 @@ async def handle_local_plugin_save(request: web.Request):
         'message': f'已保存 {len(saved)} 个文件' + (f', {len(errors)} 个失败' if errors else ''),
         'saved': saved, 'errors': errors,
     })
-
-
-# ==================== 其它市场操作 ====================
-
-async def handle_market_upload_local(request: web.Request):
-    body = await request.json()
-    path = body.get('plugin_path', '')
-    if not path or not body.get('name') or not body.get('description'):
-        return web.json_response({'success': False, 'message': '参数不完整'}, status=400)
-    full = os.path.join(_plugins_dir(), path)
-    if not os.path.isfile(full) or not full.endswith('.py'):
-        return web.json_response({'success': False, 'message': '仅支持 .py 文件'}, status=400)
-    with open(full, 'rb') as f:
-        data64 = base64.b64encode(f.read()).decode()
-    body['author_token'] = _author_token()
-    body['submit_appid'] = _appid
-    body['upload_type'] = 'local'
-    body['plugin_data'] = data64
-    body['plugin_filename'] = os.path.basename(path)
-    return web.json_response(await _call_php('submit_local', body))
-
-
-async def handle_market_upload_direct(request: web.Request):
-    body = await request.json()
-    if not body.get('name') or not body.get('description') or not body.get('plugin_data'):
-        return web.json_response({'success': False, 'message': '参数不完整'}, status=400)
-    body['author_token'] = _author_token()
-    body['submit_appid'] = _appid
-    body['upload_type'] = 'direct'
-    return web.json_response(await _call_php('submit_local', body))
-
-
-async def handle_market_author_update(request: web.Request):
-    return web.json_response(await _call_php('author_update', await request.json()))
-
-
-async def handle_market_author_delete(request: web.Request):
-    return web.json_response(await _call_php('author_delete', await request.json()))

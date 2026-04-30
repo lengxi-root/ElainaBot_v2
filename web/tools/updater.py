@@ -1,4 +1,4 @@
-"""框架更新核心逻辑 — 版本检查/下载/备份/解压覆盖 + GitHub 镜像测速"""
+"""框架更新 — 版本检查/下载/备份/覆盖 + 镜像测速"""
 
 import os
 import json
@@ -15,10 +15,20 @@ import aiohttp as _aiohttp
 
 log = logging.getLogger('ElainaBot.web.updater')
 
-GITHUB_REPO = "lengxi-root/ElainaBot_v2"
+GITHUB_REPO = "ElainaCore/ElainaBot_v2"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}"
 GITHUB_DOWNLOAD_URL = f"https://github.com/{GITHUB_REPO}/archive/main.zip"
 GITHUB_SHA_URL = f"https://codeload.github.com/{GITHUB_REPO}/zip/{{version}}"
+
+# GitHub API 代理 (能代理 api.github.com 请求)
+GITHUB_API_MIRRORS = [
+    f'https://api.github.com/repos/{GITHUB_REPO}',           # 直连
+    f'https://ghproxy.cc/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://gh-proxy.com/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://ghproxy.net/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://mirror.ghproxy.com/https://api.github.com/repos/{GITHUB_REPO}',
+    f'https://gh.api.99988866.xyz/https://api.github.com/repos/{GITHUB_REPO}',
+]
 
 
 GITHUB_FILE_MIRRORS = [
@@ -83,26 +93,26 @@ def _build_mirror_url(original_url, mirror):
     return mirror.rstrip('/') + '/' + original_url
 
 
-async def _test_one_mirror(mirror, timeout=8):
-    """GET 请求测试单个镜像延迟 (只读少量字节, 不下载全部)"""
-    test_url = _build_mirror_url(f'https://github.com/{GITHUB_REPO}', mirror)
+async def _test_one_mirror(mirror, timeout=3):
+    """HEAD 请求测试镜像延迟, 2xx/3xx 均视为成功"""
+    test_url = _build_mirror_url('https://github.com/lengxi-root/napcat-plugin-lengxi/releases/latest', mirror)
     start = time.time()
     try:
         async with _aiohttp.ClientSession() as session:
-            async with session.get(test_url,
-                                   headers={'User-Agent': 'Mozilla/5.0 ElainaBot/1.0'},
-                                   timeout=_aiohttp.ClientTimeout(total=timeout),
-                                   allow_redirects=True) as resp:
-                # 只读前 512 字节, 确认可连通即可
-                await resp.content.read(512)
+            async with session.head(test_url,
+                                    headers={'User-Agent': 'ElainaBot-Mirror-Test'},
+                                    timeout=_aiohttp.ClientTimeout(total=timeout),
+                                    allow_redirects=False,
+                                    ssl=False) as resp:
                 latency = time.time() - start
-                ok = 200 <= resp.status < 400
-                return {'mirror': mirror, 'latency': round(latency, 3), 'success': ok}
-    except Exception:
-        return {'mirror': mirror, 'latency': round(time.time() - start, 3), 'success': False}
+                # 2xx/3xx 成功, 405(不支持HEAD但镜像本身可用)也算成功
+                ok = (200 <= resp.status < 400) or resp.status == 405
+                return {'mirror': mirror, 'latency': round(latency, 3), 'success': ok, 'status': resp.status}
+    except Exception as e:
+        return {'mirror': mirror, 'latency': round(time.time() - start, 3), 'success': False, 'error': type(e).__name__}
 
 
-async def test_all_mirrors(timeout=8):
+async def test_all_mirrors(timeout=3):
     """并行测试所有镜像, 返回按延迟排序的结果列表"""
     tasks = [_test_one_mirror(m, timeout) for m in GITHUB_FILE_MIRRORS]
     # 加上 GitHub 直连
@@ -243,30 +253,37 @@ class FrameworkUpdater:
 
     # ==================== 检查更新 ====================
 
-    async def _fetch_api(self, url):
-        """尝试通过镜像访问 GitHub API"""
-        headers = {'User-Agent': 'ElainaBot/1.0', 'Accept': 'application/json'}
+    async def _fetch_api(self, path=''):
+        """尝试通过多个 API 代理访问 GitHub API
+        path 举例: '/commits?per_page=20'
+        """
+        headers = {'User-Agent': 'Mozilla/5.0 ElainaBot/1.0', 'Accept': 'application/vnd.github+json'}
         timeout = _aiohttp.ClientTimeout(total=15)
-        # 直连优先
-        urls = [url]
-        mirrors = await get_fast_mirrors()
-        for m in mirrors[:3]:
-            if m['mirror']:
-                urls.append(_build_mirror_url(url, m['mirror']))
+        urls = [base + path for base in GITHUB_API_MIRRORS]
         async with _aiohttp.ClientSession() as session:
             for u in urls:
                 try:
-                    async with session.get(u, headers=headers, timeout=timeout) as resp:
+                    log.debug(f"API 请求: {u}")
+                    async with session.get(u, headers=headers, timeout=timeout,
+                                           allow_redirects=True, ssl=False) as resp:
                         if resp.status == 200:
-                            return await resp.json()
-                except Exception:
+                            ct = resp.headers.get('content-type', '')
+                            body = await resp.read()
+                            if b'[' in body[:2] or b'{' in body[:2]:
+                                import json as _json
+                                return _json.loads(body)
+                            log.debug(f"API 返回非 JSON: {ct}, url={u}")
+                        else:
+                            log.debug(f"API 状态码 {resp.status}: {u}")
+                except Exception as e:
+                    log.debug(f"API 请求失败: {u} -> {e}")
                     continue
         return None
 
     async def check_for_updates(self):
         try:
             self._report('checking', '正在检查更新...', 0)
-            commits = await self._fetch_api(f"{GITHUB_API_URL}/commits?per_page=10")
+            commits = await self._fetch_api('/commits?per_page=10')
             if not commits or not isinstance(commits, list):
                 self._report('idle', '', 0)
                 return {'has_update': False, 'error': '无法获取更新信息'}
@@ -289,7 +306,7 @@ class FrameworkUpdater:
 
     async def fetch_changelog(self):
         """获取更新日志 (commits)"""
-        return await self._fetch_api(f"{GITHUB_API_URL}/commits?per_page=20")
+        return await self._fetch_api('/commits?per_page=20')
 
     # ==================== 下载 ====================
 
@@ -308,7 +325,7 @@ class FrameworkUpdater:
             headers = {'User-Agent': 'ElainaBot/1.0'}
             async with _aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, timeout=timeout,
-                                       allow_redirects=True) as resp:
+                                       allow_redirects=True, ssl=False) as resp:
                     resp.raise_for_status()
                     total = int(resp.headers.get('content-length', 0))
                     downloaded = 0
@@ -445,7 +462,7 @@ class FrameworkUpdater:
     async def force_update(self, skip_backup=False):
         try:
             self._report('checking', '获取最新版本...', 0)
-            commits = await self._fetch_api(f"{GITHUB_API_URL}/commits?per_page=1")
+            commits = await self._fetch_api('/commits?per_page=1')
             if not commits or not isinstance(commits, list):
                 return {'success': False, 'message': '无法获取版本信息'}
             latest = commits[0].get('sha', '')[:8]

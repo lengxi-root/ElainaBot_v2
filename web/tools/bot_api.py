@@ -1,7 +1,4 @@
-"""QQ 开放平台 HTTP API 封装 (aiohttp 纯异步版)
-
-所有方法均为 async, 使用 aiohttp.ClientSession 发起请求。
-"""
+"""QQ 开放平台 HTTP API 封装"""
 
 import json
 import gzip

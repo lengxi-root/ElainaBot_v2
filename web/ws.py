@@ -1,8 +1,4 @@
-"""WebSocket 管理 — 实时推送日志/系统状态到面板
-
-日志不在内存中缓存, 全部持久化到 SQLite, 前端初始数据通过 API 获取。
-WS 仅负责实时广播新日志条目。
-"""
+"""WebSocket 管理 — 实时推送日志/系统状态"""
 
 import json
 import asyncio

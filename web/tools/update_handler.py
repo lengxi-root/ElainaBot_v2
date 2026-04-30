@@ -1,4 +1,4 @@
-"""框架更新 (aiohttp 版) — 版本检查/更新日志/在线更新/上传更新"""
+"""框架更新 — 版本检查/更新日志/在线更新/上传更新"""
 
 import os
 import asyncio
@@ -33,7 +33,7 @@ async def handle_get_changelog(request: web.Request):
         updater = _get_updater()
         commits = await updater.fetch_changelog()
         if commits is None:
-            return web.json_response({'success': False, 'message': 'GitHub API 请求失败'}, status=502)
+            return web.json_response({'success': False, 'message': 'GitHub API 请求失败，请检查网络或稍后重试', 'data': []})
 
         result = []
         for c in (commits if isinstance(commits, list) else []):
@@ -139,19 +139,48 @@ async def handle_get_mirrors(request: web.Request):
 
 
 async def handle_test_mirrors(request: web.Request):
-    """测速所有镜像, 返回按延迟排序的结果"""
+    """SSE 流式测速所有镜像, 每完成一个立即推送"""
+    import json as _json
+    import time as _time
+    from web.tools.updater import _test_one_mirror, GITHUB_FILE_MIRRORS, clear_mirror_cache
+
+    clear_mirror_cache()
+    resp = web.StreamResponse()
+    resp.content_type = 'text/event-stream'
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'
+    await resp.prepare(request)
+
+    all_results = []
+    tasks = {asyncio.ensure_future(_test_one_mirror(m, 3)): m for m in GITHUB_FILE_MIRRORS}
+    tasks[asyncio.ensure_future(_test_one_mirror('', 3))] = ''
+
+    pending = set(tasks.keys())
+    while pending:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            result = task.result()
+            all_results.append(result)
+            try:
+                await resp.write(f"data: {_json.dumps(result, ensure_ascii=False)}\n\n".encode())
+            except ConnectionResetError:
+                return resp
+
+    # 更新缓存
+    from web.tools import updater as _upd
+    _upd._mirror_cache = sorted(
+        [r for r in all_results if r['success']],
+        key=lambda r: r['latency']
+    )
+    _upd._mirror_cache_ts = _time.time()
+
+    # 发送结束标记
     try:
-        from web.tools.updater import test_all_mirrors, clear_mirror_cache
-        clear_mirror_cache()
-        results = await test_all_mirrors(timeout=5)
-        # 更新缓存
-        from web.tools import updater as _upd
-        import time as _time
-        _upd._mirror_cache = [r for r in results if r['success']]
-        _upd._mirror_cache_ts = _time.time()
-        return web.json_response({'success': True, 'data': results})
-    except Exception as e:
-        return web.json_response({'success': False, 'message': str(e)}, status=500)
+        await resp.write(b"data: {\"done\": true}\n\n")
+        await resp.write_eof()
+    except Exception:
+        pass
+    return resp
 
 
 async def handle_set_custom_mirror(request: web.Request):

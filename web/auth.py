@@ -1,4 +1,4 @@
-"""Web 面板会话管理与鉴权 (aiohttp 版)"""
+"""会话管理与鉴权"""
 
 import os
 import json

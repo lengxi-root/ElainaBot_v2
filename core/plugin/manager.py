@@ -45,6 +45,19 @@ async def _run_hooks(funcs, name):
             report_error(PLUGIN, name, e)
 
 
+def _read_plugin_meta(module):
+    """从模块读取 __plugin_meta__ 字典, 支持的字段:
+    name, author, description, version, github, homepage, license
+    """
+    if module is None:
+        return {}
+    raw = getattr(module, '__plugin_meta__', None)
+    if not isinstance(raw, dict):
+        return {}
+    allowed = {'name', 'author', 'description', 'version', 'github', 'homepage', 'license'}
+    return {k: str(v) for k, v in raw.items() if k in allowed and v}
+
+
 class PluginManager:
     """插件管理器"""
 
@@ -148,6 +161,7 @@ class PluginManager:
             plugin.handlers, plugin.on_load_funcs = all_h, all_load
             plugin.on_unload_funcs, plugin.interceptors = all_unload, all_ic
             plugin.load_time = time.time() - start
+            plugin.meta = _read_plugin_meta(first_module)
             if not all_h and py_files:
                 plugin.error = "未注册任何处理器 (可能存在导入错误)"
 
@@ -185,6 +199,7 @@ class PluginManager:
             plugin.on_unload_funcs, plugin.interceptors = ul, ic
             plugin.is_large = True
             plugin.load_time = time.time() - start
+            plugin.meta = _read_plugin_meta(module)
 
             _ctx_mod.ctx = None
             await _run_hooks(plugin.on_load_funcs, name)
@@ -555,7 +570,7 @@ class PluginManager:
                 for h in self._all_handlers]
 
     def get_web_plugin_info(self):
-        """为 Web 面板提供插件信息 (含指令列表), 按插件名分组"""
+        """为 Web 面板提供插件信息 (含指令列表 + 插件元数据), 按插件名分组"""
         result = {}
         for p in self._plugins.values():
             cmds = [{'name': h.get('name', ''), 'pattern': h.get('pattern', ''),
@@ -565,5 +580,5 @@ class PluginManager:
             desc = ''
             if p.module and getattr(p.module, '__doc__', None):
                 desc = p.module.__doc__.strip().split('\n')[0]
-            result[p.name] = {'commands': cmds, 'description': desc}
+            result[p.name] = {'commands': cmds, 'description': desc, 'meta': p.meta}
         return result

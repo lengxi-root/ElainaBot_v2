@@ -1,4 +1,4 @@
-"""机器人重启 (aiohttp 版)"""
+"""机器人重启"""
 
 import os
 import sys

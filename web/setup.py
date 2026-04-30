@@ -1,8 +1,4 @@
-"""Web 面板集成入口
-
-在 BotManager._start_http_server 中调用 setup_web(app, bot_manager, base_dir)
-将面板路由和静态文件挂载到主 aiohttp 应用上。
-"""
+"""Web 面板集成入口"""
 
 import os
 import logging
