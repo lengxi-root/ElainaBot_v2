@@ -159,6 +159,8 @@ class BotManager:
         self._group_users_cache = {}  # {group_id: (expire_ts, set(uid...))} 群用户缓存
         self._log_base = ''         # data/log 路径 (供热重载复用)
         self._media_dir = ''        # data/media 路径 (供热重载复用)
+        self._stop_event = None     # 启动后初始化
+        self._restart_requested = False
 
     @property
     def dau_service(self):
@@ -191,13 +193,13 @@ class BotManager:
 
         # 3. 校验机器人配置
         bot_configs = cfg.get_bot_configs()
-        valid_bots = []
-        if bot_configs:
-            valid_bots = [b for b in bot_configs if b.get('appid') and b.get('secret')]
         if not bot_configs:
-            log.warning("未配置任何机器人, 请通过 Web 面板填写配置")
-        elif not valid_bots:
-            log.warning("所有机器人配置均缺少 appid 或 secret, 请通过 Web 面板填写配置")
+            log.error("未配置任何机器人, 请编辑 config/bot.yaml")
+            return
+        valid_bots = [b for b in bot_configs if b.get('appid') and b.get('secret')]
+        if not valid_bots:
+            log.error("所有机器人配置均缺少 appid 或 secret")
+            return
 
         # 4. 初始化模块管理器
         modules_dir = os.path.join(self._base_dir, 'modules')
@@ -233,7 +235,8 @@ class BotManager:
         cfg.on_change('bot', self._on_bot_config_change)
 
         if not self._bots:
-            log.warning("没有成功启动的机器人, 请通过 Web 面板填写机器人配置")
+            log.error("没有成功启动的机器人")
+            return
 
         # 8. 启动 DAU 统计服务
         self._dau_service = DAUService(log_base)
@@ -242,9 +245,10 @@ class BotManager:
         # 9. 启动 HTTP 服务器
         await self._start_http_server()
 
-        # 10. 定时配置检查 + 媒体清理
+        # 10. 定时配置检查 + 媒体清理 + 定时重启
         asyncio.create_task(self._config_watch_loop())
         asyncio.create_task(self._media_cleanup_loop(self._media_dir))
+        asyncio.create_task(self._restart_scheduler())
 
         msg = (f"✅ 启动完成: {len(self._bots)} 个机器人, "
                f"{self._plugin_manager.handler_count} 个命令处理器")
@@ -252,12 +256,14 @@ class BotManager:
         self._push_web_log('framework', {'source': '启动器', 'content': msg})
 
         # 等待退出
+        self._stop_event = asyncio.Event()
         try:
-            await self._wait_forever()
+            await self._stop_event.wait()
         except (KeyboardInterrupt, asyncio.CancelledError):
             pass
         finally:
             await self.shutdown()
+        return self._restart_requested
 
     # ==================== 机器人实例管理 ====================
 
@@ -772,8 +778,42 @@ class BotManager:
         """获取机器人实例"""
         return self._bots.get(str(appid))
 
-    @staticmethod
-    async def _wait_forever():
-        """等待直到被中断"""
-        stop = asyncio.Event()
-        await stop.wait()
+    async def _restart_scheduler(self):
+        """定时重启调度器 (daily / interval 两种模式)"""
+        restart_cfg = cfg.get('settings', 'restart') or {}
+        if not restart_cfg.get('enabled', False):
+            return
+
+        mode = restart_cfg.get('mode', 'daily')
+        now = datetime.now()
+
+        if mode == 'daily':
+            time_str = str(restart_cfg.get('daily_time', '04:00'))
+            parts = time_str.split(':')
+            h, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+            target = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if now >= target:
+                target += timedelta(days=1)
+            wait_secs = (target - now).total_seconds()
+            log.info(f"定时重启已启用 [daily {time_str}]: "
+                     f"将在 {target.strftime('%m-%d %H:%M')} 重启")
+        elif mode == 'interval':
+            hours = float(restart_cfg.get('interval_hours', 24))
+            wait_secs = hours * 3600
+            target = now + timedelta(seconds=wait_secs)
+            log.info(f"定时重启已启用 [interval {hours}h]: "
+                     f"将在 {target.strftime('%m-%d %H:%M')} 重启")
+        else:
+            log.warning(f"未知重启模式: {mode}")
+            return
+
+        try:
+            await asyncio.sleep(wait_secs)
+        except asyncio.CancelledError:
+            return
+
+        log.info("⏰ 定时重启触发")
+        self._push_web_log('framework', {'content': '⏰ 定时重启触发, 正在重启...'})
+        self._restart_requested = True
+        if self._stop_event:
+            self._stop_event.set()

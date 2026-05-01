@@ -15,10 +15,10 @@ import asyncio
 import importlib
 import importlib.util
 import re
-import yaml
 import importlib.metadata as _metadata
 from core.base.logger import get_logger, EXTENSION, report_error
 from core.base.config import cfg as app_cfg
+from core.base.context import BaseContext
 from core.module.hook import get_hook_manager
 
 log = get_logger(EXTENSION, "管理器")
@@ -40,140 +40,18 @@ _DEFAULT_MANIFEST = {
 }
 
 
-class ModuleContext:
-    """模块上下文 — 数据目录访问、配置管理、Hook 注册"""
+class ModuleContext(BaseContext):
+    """模块上下文 — 继承 BaseContext, 额外提供 Hook 注册"""
 
-    __slots__ = ('name', 'module_dir', 'data_dir', 'log', '_hooks')
+    __slots__ = ('_hooks',)
 
     def __init__(self, name, module_dir):
-        self.name = name
-        self.module_dir = module_dir
-        self.data_dir = os.path.join(module_dir, 'data')
-        self.log = get_logger(EXTENSION, name)
+        super().__init__(name, module_dir, EXTENSION)
         self._hooks = get_hook_manager()
-        os.makedirs(self.data_dir, exist_ok=True)
 
-    # ---------- 路径 ----------
-
-    def get_data_path(self, filename):
-        """获取 data/ 下文件的绝对路径"""
-        return os.path.join(self.data_dir, filename)
-
-    def get_resource_path(self, filename):
-        """获取模块根目录下的文件路径 (代码/静态资源)"""
-        return os.path.join(self.module_dir, filename)
-
-    # ---------- 配置读写 ----------
-
-    def read_config(self, filename='config.yaml'):
-        """读取 data/ 下的 YAML 配置, 文件不存在返回空 dict"""
-        path = self.get_data_path(filename)
-        if not os.path.isfile(path):
-            return {}
-        try:
-            with open(path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f) or {}
-        except Exception as e:
-            self.log.warning(f"读取配置失败 [{filename}]: {e}")
-            return {}
-
-    def save_config(self, data, filename='config.yaml', comments=None):
-        """保存配置到 data/, 可选写入注释"""
-        path = self.get_data_path(filename)
-        try:
-            if comments:
-                self._save_yaml_with_comments(path, data, comments)
-            else:
-                with open(path, 'w', encoding='utf-8') as f:
-                    yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            self.log.warning(f"保存配置失败 [{filename}]: {e}")
-
-    def _save_yaml_with_comments(self, path, data, comments, indent=0):
-        """写入带注释的 YAML 配置"""
-        lines = []
-        self._render_yaml_lines(lines, data, comments, indent)
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
-
-    def _render_yaml_lines(self, lines, data, comments, indent=0):
-        """递归渲染 YAML 行 (带注释)"""
-        prefix = '  ' * indent
-        if not isinstance(data, dict):
-            return
-        for key, value in data.items():
-            comment = comments.get(key, '') if comments else ''
-            if isinstance(value, dict):
-                sub_comments = comments.get(key) if isinstance(comments.get(key), dict) else {}
-                if comment and isinstance(comment, str):
-                    lines.append(f"{prefix}# {comment}")
-                elif isinstance(sub_comments, dict) and '__desc__' in sub_comments:
-                    lines.append(f"{prefix}# {sub_comments['__desc__']}")
-                lines.append(f"{prefix}{key}:")
-                actual_comments = sub_comments if isinstance(sub_comments, dict) else {}
-                self._render_yaml_lines(lines, value, actual_comments, indent + 1)
-            else:
-                yaml_val = self._yaml_scalar(value)
-                if comment:
-                    lines.append(f"{prefix}{key}: {yaml_val}  # {comment}")
-                else:
-                    lines.append(f"{prefix}{key}: {yaml_val}")
-
-    @staticmethod
-    def _yaml_scalar(value):
-        """将 Python 值转为 YAML 标量字符串"""
-        if value is None:
-            return 'null'
-        if isinstance(value, bool):
-            return 'true' if value else 'false'
-        if isinstance(value, (int, float)):
-            return str(value)
-        if isinstance(value, str):
-            if not value:
-                return "''"
-            if any(c in value for c in ':{}[]&*?|>!%@`,"\'') or value.strip() != value:
-                return f"'{value}'"
-            return value
-        return yaml.dump(value, default_flow_style=True, allow_unicode=True).strip()
-
-    def ensure_config(self, defaults, filename='config.yaml', comments=None):
-        """确保配置存在且不缺项, 返回完整配置 dict"""
-        current = self.read_config(filename)
-        changed = False
-        for key, value in defaults.items():
-            if key not in current:
-                current[key] = value
-                changed = True
-        if changed:
-            self.save_config(current, filename, comments=comments)
-            self.log.info(f"配置已自动补全: {filename}")
-        return current
-
-    # ---------- 数据文件 ----------
-
-    def read_data(self, filename, encoding='utf-8'):
-        """读取 data/ 下的文本文件"""
-        path = self.get_data_path(filename)
-        if not os.path.isfile(path):
-            return None
-        with open(path, 'r', encoding=encoding) as f:
-            return f.read()
-
-    def save_data(self, filename, content, encoding='utf-8'):
-        """保存文本到 data/"""
-        path = self.get_data_path(filename)
-        with open(path, 'w', encoding=encoding) as f:
-            f.write(content)
-
-    def data_exists(self, filename):
-        """检查 data/ 下文件是否存在"""
-        return os.path.isfile(self.get_data_path(filename))
-
-    def list_data(self):
-        """列出 data/ 下所有文件"""
-        if not os.path.isdir(self.data_dir):
-            return []
-        return os.listdir(self.data_dir)
+    @property
+    def module_dir(self):
+        return self._root_dir
 
     # ---------- Hook ----------
 
