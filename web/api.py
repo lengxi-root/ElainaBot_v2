@@ -63,6 +63,8 @@ def get_routes() -> list:
         web.post('/api/plugins/upload', _(plugin_manager.handle_upload_plugin)),
         web.post('/api/plugins/reload', _(plugin_manager.handle_reload_plugin)),
         web.post('/api/plugins/config-files', _(plugin_manager.handle_plugin_config_files)),
+        web.get('/api/plugins/bots', _(plugin_manager.handle_get_plugin_bots)),
+        web.post('/api/plugins/bots', _(plugin_manager.handle_set_plugin_bots)),
 
         # ── 模块管理 ──
         web.get('/api/modules/scan', _(plugin_manager.handle_scan_modules)),

@@ -1,33 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""可选模块: MySQL 异步连接池
+"""MySQL 异步连接池组件
 
-基于 aiomysql 的连接池, 提供 execute/query/fetch/upsert 等便捷方法。
-
-用法 (插件中):
-    pool = bot.module_manager.get("mysql_pool")
-    if pool and pool.is_available():
-        await pool.execute("INSERT INTO t VALUES (%s)", (1,))
-        rows = await pool.fetch_all("SELECT * FROM t")
-        await pool.upsert("users", {"id": 1, "name": "x"}, ["id"])
-
-配置 (data/config.yaml):
-    host: 127.0.0.1
-    port: 3306
-    user: root
-    password: ""
-    database: elaina
-    minsize: 2
-    maxsize: 20
-    charset: utf8mb4
+基于 aiomysql, 提供 execute/fetch/upsert 等便捷方法。
+由 datastore 主模块统一管理生命周期, 不单独作为模块使用。
 """
 
-import asyncio
-from core.base.logger import get_logger, EXTENSION
-
-log = get_logger(EXTENSION, "MySQL连接池")
-
-_instance = None
 _DEFAULTS = {
     'host': '127.0.0.1',
     'port': 3306,
@@ -55,43 +33,25 @@ _COMMENTS = {
 }
 
 
-# ==================== 模块入口 ====================
-
-async def setup(ctx):
-    global _instance
-    cfg = ctx.ensure_config(_DEFAULTS, comments=_COMMENTS)
-    _instance = MySQLPool(cfg)
-    await _instance.initialize()
-    return _instance
-
-
-async def teardown():
-    global _instance
-    if _instance:
-        await _instance.close()
-        _instance = None
-
-
-# ==================== 连接池 ====================
-
 class MySQLPool:
     """MySQL 异步连接池封装"""
 
-    __slots__ = ('_cfg', '_pool', '_available')
+    __slots__ = ('_cfg', '_pool', '_available', '_log')
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, log):
         self._cfg = cfg
         self._pool = None
         self._available = False
+        self._log = log
 
     async def initialize(self):
         try:
             import aiomysql
         except ImportError:
-            log.error("aiomysql 未安装, MySQL 连接池禁用 (pip install aiomysql)")
+            self._log.error("aiomysql 未安装, MySQL 连接池禁用 (pip install aiomysql)")
             return
         if not self._cfg.get('database'):
-            log.warning("未配置 database, 跳过初始化")
+            self._log.warning("未配置 database, 跳过 MySQL 初始化")
             return
         try:
             self._pool = await aiomysql.create_pool(
@@ -107,9 +67,9 @@ class MySQLPool:
                 autocommit=bool(self._cfg.get('autocommit', True)),
             )
             self._available = True
-            log.info(f"✅ 连接池就绪 [{self._cfg['host']}:{self._cfg['port']}/{self._cfg['database']}]")
+            self._log.info(f"✅ MySQL 连接池就绪 [{self._cfg['host']}:{self._cfg['port']}/{self._cfg['database']}]")
         except Exception as e:
-            log.error(f"初始化失败: {e}")
+            self._log.error(f"MySQL 初始化失败: {e}")
             self._available = False
 
     def is_available(self):
@@ -125,12 +85,7 @@ class MySQLPool:
     # ---------- 连接 ----------
 
     def acquire(self):
-        """获取连接 (用作 async with):
-
-            async with pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(...)
-        """
+        """获取连接 (用作 async with pool.acquire() as conn)"""
         if not self.is_available():
             raise RuntimeError("MySQL 连接池不可用")
         return self._pool.acquire()
@@ -190,13 +145,7 @@ class MySQLPool:
                 return row[0] if row else default
 
     async def upsert(self, table, data, conflict_columns):
-        """INSERT ... ON DUPLICATE KEY UPDATE
-
-        Args:
-            table:            表名
-            data:             {column: value}
-            conflict_columns: 冲突列名列表 (用于排除 update 子句)
-        """
+        """INSERT ... ON DUPLICATE KEY UPDATE"""
         if not self.is_available() or not data:
             return 0
         cols = list(data.keys())
@@ -215,6 +164,24 @@ class MySQLPool:
             "WHERE table_schema=DATABASE() AND table_name=%s",
             (table_name,))
         return bool(row and row.get('c'))
+
+    async def execute_transaction(self, sql_list):
+        """执行事务 (列表中每项为 {'sql': ..., 'params': ...})"""
+        if not self.is_available():
+            return False
+        async with self._pool.acquire() as conn:
+            await conn.begin()
+            try:
+                async with conn.cursor() as cur:
+                    for item in sql_list:
+                        sql = item.get('sql')
+                        if sql:
+                            await cur.execute(sql, item.get('params'))
+                await conn.commit()
+                return True
+            except Exception:
+                await conn.rollback()
+                return False
 
     async def ping(self):
         """连通性测试"""

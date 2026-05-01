@@ -69,9 +69,11 @@ class PluginManager:
         self._all_interceptors = []      # 排序后的拦截器
         self._blacklist_users = set()
         self._blacklist_groups = set()
+        self._plugin_bots = {}           # {key: [appid, ...]} 机器人绑定
         self._lock = asyncio.Lock()
         self._base_dir = os.path.dirname(self._dir)  # 项目根目录
         self._load_blacklists()
+        self._load_plugin_bots()
 
     @property
     def plugins(self):
@@ -150,6 +152,8 @@ class PluginManager:
                     if first_module is None:
                         first_module = module
                     h, lo, ul, ic = _collect_pending()
+                    for item in h:
+                        item['_file'] = fname
                     all_h.extend(h); all_load.extend(lo)
                     all_unload.extend(ul); all_ic.extend(ic)
                 except Exception as e:
@@ -321,6 +325,29 @@ class PluginManager:
                 log.debug(f"[{plugin.name}] {len(plugin.handlers)} 个处理器")
         self._all_handlers = sorted(handlers, key=lambda h: -h['priority'])
         self._all_interceptors = sorted(intercepts, key=lambda i: -i['priority'])
+        self._apply_bot_bindings()
+
+    def _apply_bot_bindings(self):
+        """预计算每个 handler 的允许机器人集合, 避免 dispatch 时重复计算"""
+        pb = self._plugin_bots
+        for h in self._all_handlers:
+            h['_allowed_bots'] = self._resolve_allowed_bots(
+                pb, h.get('_plugin', ''), h.get('_file', ''))
+
+    @staticmethod
+    def _resolve_allowed_bots(pb, plugin_name, file_name):
+        """解析 handler 允许的 appid 集合"""
+        if not pb:
+            return None
+        if file_name:
+            bots = pb.get(f"{plugin_name}/{file_name}")
+            if bots is not None:
+                return frozenset(bots) if bots else None
+        if plugin_name:
+            bots = pb.get(plugin_name)
+            if bots is not None:
+                return frozenset(bots) if bots else None
+        return None
 
     # ==================== 分发 ====================
 
@@ -394,6 +421,9 @@ class PluginManager:
     async def _try_match_handlers(self, content, event, sender, user_id, appid, log_service):
         """尝试匹配处理器, 返回 True(匹配) / None(无)"""
         for h in self._all_handlers:
+            # 机器人绑定过滤
+            if not self._check_bot_binding(h, appid):
+                continue
             # 事件类型过滤
             if h['event_types'] and event.event_type not in h['event_types']:
                 continue
@@ -536,6 +566,67 @@ class PluginManager:
     def remove_blacklist_group(self, group_id):
         self._blacklist_groups.discard(group_id)
         self._save_blacklist('_blacklist_groups', 'blacklist_groups.txt')
+
+    # ==================== 插件机器人绑定 ====================
+
+    def _load_plugin_bots(self):
+        """从 data/plugin_bots.yaml 加载插件机器人绑定配置"""
+        import yaml
+        path = os.path.join(self._base_dir, 'data', 'plugin_bots.yaml')
+        if not os.path.isfile(path):
+            self._plugin_bots = {}
+            return
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+            # 规范化: 值统一为字符串列表
+            self._plugin_bots = {
+                str(k): [str(v) for v in vs] if isinstance(vs, list) else []
+                for k, vs in data.items()
+            }
+        except Exception as e:
+            log.warning(f"加载插件机器人绑定失败: {e}")
+            self._plugin_bots = {}
+
+    def _save_plugin_bots(self):
+        """保存插件机器人绑定到 data/plugin_bots.yaml"""
+        import yaml
+        data_dir = os.path.join(self._base_dir, 'data')
+        os.makedirs(data_dir, exist_ok=True)
+        path = os.path.join(data_dir, 'plugin_bots.yaml')
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                yaml.dump(self._plugin_bots, f, allow_unicode=True,
+                          default_flow_style=False, sort_keys=False)
+        except Exception as e:
+            log.warning(f"保存插件机器人绑定失败: {e}")
+
+    @staticmethod
+    def _check_bot_binding(handler, appid):
+        """检查 handler 是否允许在指定 appid 上触发 (O(1) 集合查找)"""
+        allowed = handler.get('_allowed_bots')
+        return allowed is None or appid in allowed
+
+    def get_plugin_bots(self):
+        """获取插件机器人绑定配置 (供 Web API 读取)"""
+        return dict(self._plugin_bots)
+
+    def set_plugin_bots(self, data):
+        """设置插件机器人绑定配置 (供 Web API 保存)
+
+        data: {key: [appid, ...]} 其中 key 为 "插件名" 或 "插件名/文件名"
+        """
+        self._plugin_bots = {
+            str(k): [str(v) for v in vs] if isinstance(vs, list) else []
+            for k, vs in data.items()
+        }
+        self._save_plugin_bots()
+        self._apply_bot_bindings()
+
+    def reload_plugin_bots(self):
+        """重新加载插件机器人绑定 (配置热更新)"""
+        self._load_plugin_bots()
+        self._apply_bot_bindings()
 
     # ==================== 管理接口 ====================
 

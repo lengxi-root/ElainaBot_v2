@@ -1,31 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""可选模块: Redis 异步客户端
+"""Redis 异步客户端组件
 
-基于 redis.asyncio (redis-py 5.x), 提供常用键/Hash/List/Set/ZSet 操作。
-所有操作失败返回默认值, 不抛异常 (调用方无需处理 None)。
+基于 redis.asyncio (redis-py 5.x), 完整迁移 function/redis_pool.py 所有能力。
+由 datastore 主模块统一管理生命周期, 不单独作为模块使用。
 
-用法 (插件中):
-    rds = bot.module_manager.get("redis_pool")
-    if rds and rds.is_available():
-        await rds.set("k", "v", ex=60)
-        v = await rds.get("k")
-
-配置 (data/config.yaml):
-    host: 127.0.0.1
-    port: 6379
-    password: ""
-    db: 0
-    max_connections: 50
-    socket_timeout: 5
-    decode_responses: true
+完整操作: 基础 Key / Hash / List / Set / Sorted Set / Pipeline / 管理命令
 """
 
-from core.base.logger import get_logger, EXTENSION
-
-log = get_logger(EXTENSION, "Redis连接池")
-
-_instance = None
 _DEFAULTS = {
     'host': '127.0.0.1',
     'port': 6379,
@@ -51,40 +33,22 @@ _COMMENTS = {
 }
 
 
-# ==================== 模块入口 ====================
-
-async def setup(ctx):
-    global _instance
-    cfg = ctx.ensure_config(_DEFAULTS, comments=_COMMENTS)
-    _instance = RedisPool(cfg)
-    await _instance.initialize()
-    return _instance
-
-
-async def teardown():
-    global _instance
-    if _instance:
-        await _instance.close()
-        _instance = None
-
-
-# ==================== Redis 客户端 ====================
-
 class RedisPool:
-    """Redis 异步客户端封装"""
+    """Redis 异步客户端封装 — 完整能力"""
 
-    __slots__ = ('_cfg', '_client', '_available')
+    __slots__ = ('_cfg', '_client', '_available', '_log')
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, log):
         self._cfg = cfg
         self._client = None
         self._available = False
+        self._log = log
 
     async def initialize(self):
         try:
             from redis.asyncio import Redis, ConnectionPool
         except ImportError:
-            log.error("redis 未安装 (pip install redis>=5.0)")
+            self._log.error("redis 未安装 (pip install redis>=5.0)")
             return
         try:
             password = self._cfg.get('password') or None
@@ -102,9 +66,9 @@ class RedisPool:
             self._client = Redis(connection_pool=pool)
             await self._client.ping()
             self._available = True
-            log.info(f"✅ Redis 连接成功 [{self._cfg['host']}:{self._cfg['port']}/{self._cfg['db']}]")
+            self._log.info(f"✅ Redis 连接成功 [{self._cfg['host']}:{self._cfg['port']}/{self._cfg['db']}]")
         except Exception as e:
-            log.error(f"Redis 初始化失败: {e}")
+            self._log.error(f"Redis 初始化失败: {e}")
             self._client = None
             self._available = False
 
@@ -112,7 +76,7 @@ class RedisPool:
         return self._available and self._client is not None
 
     def get_client(self):
-        """获取底层 redis.asyncio.Redis 实例 (高级用法)"""
+        """获取底层 redis.asyncio.Redis 实例"""
         return self._client if self.is_available() else None
 
     async def close(self):
@@ -126,13 +90,13 @@ class RedisPool:
 
     # ==================== 内部 ====================
 
-    async def _safe(self, op_name, coro, default=None, key=None):
+    async def _safe(self, op, coro, default=None, key=None):
         if not self.is_available():
             return default
         try:
             return await coro
         except Exception as e:
-            log.warning(f"{op_name} 失败 [{key}]: {e}" if key else f"{op_name} 失败: {e}")
+            self._log.warning(f"{op} 失败 [{key}]: {e}" if key else f"{op} 失败: {e}")
             return default
 
     # ==================== 基础操作 ====================
@@ -162,6 +126,11 @@ class RedisPool:
         return bool(await self._safe("EXPIRE", self._client.expire(key, seconds),
                                      default=False, key=key))
 
+    async def expireat(self, key, when):
+        """设置过期时间点 (Unix 时间戳)"""
+        return bool(await self._safe("EXPIREAT", self._client.expireat(key, when),
+                                     default=False, key=key))
+
     async def ttl(self, key):
         return await self._safe("TTL", self._client.ttl(key), default=-2, key=key)
 
@@ -175,6 +144,13 @@ class RedisPool:
 
     async def keys(self, pattern='*'):
         return await self._safe("KEYS", self._client.keys(pattern), default=[])
+
+    async def scan_iter(self, match=None, count=None):
+        """扫描键 — 返回异步迭代器"""
+        if not self.is_available():
+            return
+        async for key in self._client.scan_iter(match=match, count=count):
+            yield key
 
     # ==================== Hash ====================
 
@@ -261,22 +237,57 @@ class RedisPool:
 
     # ==================== Sorted Set ====================
 
-    async def zadd(self, name, mapping):
-        return await self._safe("ZADD", self._client.zadd(name, mapping), default=0, key=name)
+    async def zadd(self, name, mapping, nx=False, xx=False):
+        return await self._safe("ZADD", self._client.zadd(name, mapping, nx=nx, xx=xx),
+                                default=0, key=name)
 
     async def zrem(self, name, *values):
         if not values:
             return 0
         return await self._safe("ZREM", self._client.zrem(name, *values), default=0, key=name)
 
-    async def zrange(self, name, start, end, withscores=False, desc=False):
-        coro = self._client.zrevrange(name, start, end, withscores=withscores) \
-            if desc else self._client.zrange(name, start, end, withscores=withscores)
-        return await self._safe("ZRANGE", coro, default=[], key=name)
+    async def zrange(self, name, start, end, withscores=False):
+        return await self._safe("ZRANGE", self._client.zrange(name, start, end, withscores=withscores),
+                                default=[], key=name)
 
-    async def zcard(self, name):
-        return await self._safe("ZCARD", self._client.zcard(name), default=0, key=name)
+    async def zrevrange(self, name, start, end, withscores=False):
+        return await self._safe("ZREVRANGE", self._client.zrevrange(name, start, end, withscores=withscores),
+                                default=[], key=name)
 
     async def zscore(self, name, value):
         return await self._safe("ZSCORE", self._client.zscore(name, value),
                                 default=None, key=name)
+
+    async def zincrby(self, name, amount, value):
+        return await self._safe("ZINCRBY", self._client.zincrby(name, amount, value),
+                                default=None, key=name)
+
+    async def zcard(self, name):
+        return await self._safe("ZCARD", self._client.zcard(name), default=0, key=name)
+
+    # ==================== Pipeline / 管理 ====================
+
+    def pipeline(self, transaction=True):
+        """获取管道对象 (async with pool.pipeline() as pipe)"""
+        if not self.is_available():
+            return None
+        return self._client.pipeline(transaction=transaction)
+
+    async def flushdb(self, asynchronous=False):
+        """清空当前数据库"""
+        return bool(await self._safe("FLUSHDB", self._client.flushdb(asynchronous=asynchronous),
+                                     default=False))
+
+    async def info(self, section=None):
+        """获取服务器信息"""
+        if section:
+            return await self._safe("INFO", self._client.info(section), default={})
+        return await self._safe("INFO", self._client.info(), default={})
+
+    async def dbsize(self):
+        """获取键数量"""
+        return await self._safe("DBSIZE", self._client.dbsize(), default=0)
+
+    async def ping(self):
+        """连通性测试"""
+        return bool(await self._safe("PING", self._client.ping(), default=False))

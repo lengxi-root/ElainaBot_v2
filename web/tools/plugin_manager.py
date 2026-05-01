@@ -152,6 +152,19 @@ def _scan_py_files(dir_path, prefix=''):
     return files
 
 
+def _get_plugin_bots_map():
+    """从 PluginManager 获取插件机器人绑定配置"""
+    if not _bot_manager:
+        return {}
+    pm = getattr(_bot_manager, '_plugin_manager', None) or getattr(_bot_manager, 'plugin_manager', None)
+    if not pm or not hasattr(pm, 'get_plugin_bots'):
+        return {}
+    try:
+        return pm.get_plugin_bots()
+    except Exception:
+        return {}
+
+
 def _scan_plugin_dirs():
     """按目录分组扫描所有 .py / .py.ban 文件"""
     plugins_dir = _plugins_dir()
@@ -160,6 +173,7 @@ def _scan_plugin_dirs():
         return dirs
 
     plugin_info_map = _get_plugin_info()
+    bots_map = _get_plugin_bots_map()
 
     for dir_name in sorted(os.listdir(plugins_dir)):
         dir_path = os.path.join(plugins_dir, dir_name)
@@ -171,6 +185,14 @@ def _scan_plugin_dirs():
 
         # 扫描顶层 .py 文件
         files = _scan_py_files(dir_path)
+
+        # 为每个文件注入机器人绑定信息
+        for f in files:
+            fname = f['name']
+            if fname.endswith('.py'):
+                fname = fname[:-3]
+            file_key = f"{dir_name}/{fname}"
+            f['allowed_bots'] = bots_map.get(file_key, [])
 
         # 判断目录整体状态: 有入口文件 → 大型, 否则 → 小型
         has_entry = any(f['name'] in _ENTRY_CANDIDATES for f in files)
@@ -195,6 +217,7 @@ def _scan_plugin_dirs():
             'enabled': is_enabled,
             'is_large': has_entry,
             'files': files,
+            'allowed_bots': bots_map.get(dir_name, []),
             'commands': pinfo.get('commands', []),
             'description': pinfo.get('description', ''),
             'meta': pinfo.get('meta', {}),
@@ -796,3 +819,34 @@ async def handle_plugin_config_files(request: web.Request):
         return web.json_response({'success': False, 'message': '缺少插件名'}, status=400)
     files = _scan_plugin_configs(plugin_name)
     return web.json_response({'success': True, 'config_files': files})
+
+
+# ==================== 插件机器人绑定 ====================
+
+async def handle_get_plugin_bots(request: web.Request):
+    """获取插件机器人绑定配置"""
+    if not _bot_manager:
+        return web.json_response({'success': False, 'message': '框架未启动'}, status=503)
+    pm = getattr(_bot_manager, '_plugin_manager', None) or getattr(_bot_manager, 'plugin_manager', None)
+    if not pm:
+        return web.json_response({'success': False, 'message': '插件管理器未初始化'}, status=503)
+    return web.json_response({'success': True, 'plugin_bots': pm.get_plugin_bots()})
+
+
+async def handle_set_plugin_bots(request: web.Request):
+    """设置插件机器人绑定配置
+
+    body: {"plugin_bots": {"插件名或插件名/文件名": ["appid1", "appid2", ...]}}
+    空列表 = 不限制 (所有机器人均可触发)
+    """
+    if not _bot_manager:
+        return web.json_response({'success': False, 'message': '框架未启动'}, status=503)
+    pm = getattr(_bot_manager, '_plugin_manager', None) or getattr(_bot_manager, 'plugin_manager', None)
+    if not pm:
+        return web.json_response({'success': False, 'message': '插件管理器未初始化'}, status=503)
+    body = await request.json()
+    data = body.get('plugin_bots')
+    if not isinstance(data, dict):
+        return web.json_response({'success': False, 'message': 'plugin_bots 必须为 dict'}, status=400)
+    pm.set_plugin_bots(data)
+    return web.json_response({'success': True, 'message': '插件机器人绑定已保存'})

@@ -98,6 +98,8 @@ class BotInstance:
                 on_event=on_event,
                 reconnect_interval=ws_cfg.get('reconnect_interval', 5),
                 max_reconnects=ws_cfg.get('max_reconnects', -1),
+                custom_url=ws_cfg.get('custom_url', ''),
+                custom_api_base=str(self.bot_cfg.get('api_base', '') or ''),
             )
 
         bot_log = get_logger(FRAMEWORK, self.name)
@@ -327,6 +329,8 @@ class BotManager:
                     on_event=self._on_event,
                     reconnect_interval=ws_cfg.get('reconnect_interval', 5),
                     max_reconnects=ws_cfg.get('max_reconnects', -1),
+                    custom_url=ws_cfg.get('custom_url', ''),
+                    custom_api_base=str(new_cfg.get('api_base', '') or ''),
                 )
                 asyncio.create_task(bot.ws_client.connect())
                 log.info(f"[{bot.name}] WS 已启用")

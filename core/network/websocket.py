@@ -28,12 +28,15 @@ class WSClient:
     """单个机器人的 WebSocket 客户端"""
 
     def __init__(self, appid, token_manager, on_event, *,
-                 reconnect_interval=5, max_reconnects=-1):
+                 reconnect_interval=5, max_reconnects=-1,
+                 custom_url='', custom_api_base=''):
         self._appid = str(appid)
         self._tm = token_manager
         self._on_event = on_event
         self._reconnect_interval = reconnect_interval
         self._max_reconnects = max_reconnects
+        self._custom_url = custom_url.strip() if custom_url else ''
+        self._custom_api_base = custom_api_base.strip().rstrip('/') if custom_api_base else ''
 
         self._ws = None
         self._session_id = None
@@ -179,7 +182,14 @@ class WSClient:
         if self._gateway_url:
             return self._gateway_url
 
-        url = _GATEWAY_URL
+        # 优先使用自定义 WS 地址
+        if self._custom_url:
+            self._gateway_url = self._custom_url
+            log.info(f"[{self._appid}] 使用自定义 WS 地址: {self._custom_url}")
+            return self._gateway_url
+
+        # 自定义 API 基址时, 从该基址获取网关
+        url = f"{self._custom_api_base}/gateway/bot" if self._custom_api_base else _GATEWAY_URL
         token = await self._tm.get_token()
         client = await self._tm._ensure_client()
         async with client.get(url, headers={'Authorization': f"QQBot {token}"}) as resp:
