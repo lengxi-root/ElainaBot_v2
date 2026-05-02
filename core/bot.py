@@ -13,6 +13,7 @@ import os
 import sys
 import json
 import time
+import logging
 import asyncio
 from datetime import datetime, timedelta
 from aiohttp import web
@@ -413,8 +414,14 @@ class BotManager:
         except Exception as e:
             log.warning(f"Web 面板加载失败: {e}")
 
+        # 过滤 HTTPS→HTTP 误连产生的 BadStatusLine 噪音日志
+        class _BadLineFilter(logging.Filter):
+            def filter(self, record):
+                return 'BadStatusLine' not in record.getMessage()
+        logging.getLogger('aiohttp.server').addFilter(_BadLineFilter())
+
         host = cfg.get('settings', 'server.host', '0.0.0.0')
-        port = cfg.get('settings', 'server.port', 5001)
+        port = cfg.get('settings', 'server.port', 5200)
 
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
