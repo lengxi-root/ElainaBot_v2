@@ -8,6 +8,7 @@ import subprocess
 import asyncio
 import importlib
 import importlib.util
+import importlib.machinery
 from collections import OrderedDict
 from core.base.logger import get_logger, PLUGIN, FRAMEWORK, report_error
 from core.base.config import cfg
@@ -87,6 +88,17 @@ class PluginManager:
         return len(self._all_handlers)
 
     # ==================== 加载 ====================
+
+    @staticmethod
+    def _register_pkg(mod_name, path):
+        """注册包到 sys.modules (带完整 ModuleSpec, 兼容 Python 3.9+)"""
+        if mod_name in sys.modules:
+            return sys.modules[mod_name]
+        spec = importlib.machinery.ModuleSpec(mod_name, None, is_package=True)
+        spec.submodule_search_locations = [path]
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[mod_name] = mod
+        return mod
 
     async def load_all(self):
         """加载 plugins/ 下所有插件目录"""
@@ -348,15 +360,34 @@ class PluginManager:
                 return path
         return None
 
-    @staticmethod
-    def _import_plugin(name, plugin_dir, entry_path):
-        """动态导入插件目录"""
+    @classmethod
+    def _import_plugin(cls, name, plugin_dir, entry_path):
+        """动态导入插件目录 (预注册包层级, 兼容 Python 3.9+)"""
+        plugins_dir = os.path.dirname(plugin_dir)
         mod_name = f"plugins.{name}"
+        # 注册 plugins 父包
+        parent = cls._register_pkg('plugins', plugins_dir)
+        # 注册子目录包 (如 plugins.system.app)
+        for sub in os.listdir(plugin_dir):
+            sub_path = os.path.join(plugin_dir, sub)
+            if os.path.isdir(sub_path) and not sub.startswith(('_', '.')):
+                sub_mod = cls._register_pkg(f'{mod_name}.{sub}', sub_path)
+                # 预设属性, 让 import 链可达
+                setattr(sys.modules.get(mod_name, parent), sub, sub_mod)
+        # 导入入口文件
         spec = importlib.util.spec_from_file_location(
             mod_name, entry_path,
             submodule_search_locations=[plugin_dir])
         module = importlib.util.module_from_spec(spec)
         sys.modules[mod_name] = module
+        setattr(parent, name, module)
+        # 重新绑定子包属性到真正的 module
+        for sub in os.listdir(plugin_dir):
+            sub_path = os.path.join(plugin_dir, sub)
+            if os.path.isdir(sub_path) and not sub.startswith(('_', '.')):
+                sub_mod = sys.modules.get(f'{mod_name}.{sub}')
+                if sub_mod:
+                    setattr(module, sub, sub_mod)
         spec.loader.exec_module(module)
         return module
 

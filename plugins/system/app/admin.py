@@ -21,7 +21,7 @@ os.makedirs(_DATA_DIR, exist_ok=True)
 
 # 项目根目录 data/
 _ROOT_DATA_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(_PLUGIN_DIR))),
+    os.path.dirname(os.path.dirname(_PLUGIN_DIR)),
     'data')
 os.makedirs(_ROOT_DATA_DIR, exist_ok=True)
 
