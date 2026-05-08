@@ -450,6 +450,22 @@ def _modules_dir():
     return os.path.join(_base_dir, 'modules')
 
 
+def _read_module_meta(entry_path):
+    """通过 AST 读取 main.py 中的 __module_meta__"""
+    import ast
+    try:
+        with open(entry_path, 'r', encoding='utf-8') as f:
+            tree = ast.parse(f.read())
+        for node in ast.iter_child_nodes(tree):
+            if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                    and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == '__module_meta__'):
+                return ast.literal_eval(node.value)
+    except Exception:
+        pass
+    return {}
+
+
 def _scan_modules():
     """扫描所有模块, 包含运行时状态"""
     modules_dir = _modules_dir()
@@ -482,15 +498,8 @@ def _scan_modules():
         if not os.path.isfile(entry):
             continue
 
-        # 读取 module.json
-        meta = {}
-        meta_path = os.path.join(mod_dir, 'module.json')
-        if os.path.isfile(meta_path):
-            try:
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    meta = json.load(f) or {}
-            except Exception:
-                pass
+        # 读取 __module_meta__
+        meta = _read_module_meta(entry)
 
         # 读取配置文件列表
         data_dir = os.path.join(mod_dir, 'data')
