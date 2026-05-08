@@ -310,8 +310,12 @@ class BotManager(EventHandlerMixin):
 
         if body.get('op') == 13:
             sig_resp = verify_and_respond(body, bot.secret)
-            return (web.Response(text=sig_resp, content_type='application/json') if sig_resp
-                    else web.json_response({'error': 'invalid validation'}, status=400))
+            if sig_resp:
+                log.info(f"[Webhook] 签名校验成功 appid={appid}")
+                return web.Response(text=sig_resp, content_type='application/json')
+            else:
+                log.warning(f"[Webhook] 签名校验失败 appid={appid}")
+                return web.json_response({'error': 'invalid validation'}, status=400)
 
         try:
             asyncio.create_task(self._on_event(Event.from_webhook(headers, body)))

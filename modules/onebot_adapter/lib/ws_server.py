@@ -4,6 +4,7 @@
 反向 WS: 主动连接外部框架的 WS 地址, 如 ws://yunzai:2536/OneBot/v11/ws
 遵循 OneBot 11 标准: https://github.com/botuniverse/onebot-11
 """
+from __future__ import annotations
 
 import json
 import re

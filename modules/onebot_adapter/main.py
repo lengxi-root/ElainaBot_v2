@@ -10,6 +10,13 @@
     3. 模块将 WS 路由挂载到框架已有的 aiohttp 服务器, 接收外部框架的 action 请求并调用 sender
 """
 
+__module_meta__ = {
+    'name': 'OneBot 适配器',
+    'description': 'OneBot 11 协议适配器, 将消息/事件推送到外部机器人框架',
+    'version': '1.0.0',
+    'author': 'Elaina',
+}
+
 import json
 import base64
 import random
@@ -143,7 +150,7 @@ class OneBotAdapter:
     def _get_framework_app():
         """获取框架的 aiohttp Application"""
         try:
-            from core.bot import _bot_manager_ref
+            from core.bot.manager import _bot_manager_ref
             if _bot_manager_ref and _bot_manager_ref._app:
                 return _bot_manager_ref._app
         except Exception:
@@ -168,7 +175,7 @@ class OneBotAdapter:
         此处由模块在 setup 阶段补全, teardown 时还原。
         """
         try:
-            from core.bot import _bot_manager_ref
+            from core.bot.manager import _bot_manager_ref
             bm = _bot_manager_ref
             if bm is None:
                 self.log.warning("BotManager 未初始化, 无法安装事件 hook")

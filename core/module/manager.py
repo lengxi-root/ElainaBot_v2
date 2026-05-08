@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 """拓展模块管理器 — 自动发现、依赖安装、启停管理
 
-模块结构: modules/{name}/ → main.py(入口) + module.json(清单) + requirements.txt(可选) + data/(配置)
+模块结构: modules/{name}/ → main.py(入口, 含 __module_meta__) + requirements.txt(可选) + data/(配置)
 入口函数: async def setup(ctx: ModuleContext) / async def teardown()
 安装即启用, 运行时可 disable(), 永久禁用删除目录
 """
 
 import os
 import sys
+import ast
 import json
 import subprocess
 import asyncio
@@ -29,7 +30,7 @@ async def _await_if_coro(result):
     return await result if asyncio.iscoroutine(result) else result
 
 
-# module.json 字段默认值
+# __module_meta__ 字段默认值
 _DEFAULT_MANIFEST = {
     'name': '',
     'description': '',
@@ -300,16 +301,21 @@ class ModuleManager:
 
     @staticmethod
     def _read_manifest(mod_dir):
-        """读取 module.json 清单"""
-        path = os.path.join(mod_dir, 'module.json')
-        if not os.path.isfile(path):
+        """从 main.py 的 __module_meta__ 读取模块元数据"""
+        entry = os.path.join(mod_dir, 'main.py')
+        if not os.path.isfile(entry):
             return dict(_DEFAULT_MANIFEST)
         try:
-            with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f) or {}
+            with open(entry, 'r', encoding='utf-8') as f:
+                tree = ast.parse(f.read())
+            for node in ast.iter_child_nodes(tree):
+                if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                        and isinstance(node.targets[0], ast.Name)
+                        and node.targets[0].id == '__module_meta__'):
+                    return ast.literal_eval(node.value)
         except Exception as e:
-            log.warning(f"读取 module.json 失败 [{mod_dir}]: {e}")
-            return dict(_DEFAULT_MANIFEST)
+            log.warning(f"读取模块元数据失败 [{mod_dir}]: {e}")
+        return dict(_DEFAULT_MANIFEST)
 
     async def _install_requirements(self, name, target_dir):
         """检查并安装 requirements.txt 依赖"""

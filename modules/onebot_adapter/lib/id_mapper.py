@@ -3,6 +3,7 @@
 使用 SQLite 持久化存储, 为每个 openid (用户/群) 生成唯一的 10 位数字 QQ 号。
 已有映射直接复用, 保证幂等。
 """
+from __future__ import annotations
 
 import os
 import random

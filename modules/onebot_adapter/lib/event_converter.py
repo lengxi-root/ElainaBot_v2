@@ -2,6 +2,7 @@
 
 只适配用户实际能发送的消息类型: 文本、图片、语音、视频。
 """
+from __future__ import annotations
 
 import html
 import time
