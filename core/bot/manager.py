@@ -246,17 +246,19 @@ class BotManager(EventHandlerMixin):
 
     async def shutdown(self):
         log.info("正在关闭...")
+        # 按依赖顺序关闭: 插件监听 → DAU → 机器人 → 模块 → 日志 → HTTP
         if self._plugin_manager:
             self._plugin_manager.stop_watcher()
-        if self._dau_service:
-            await self._dau_service.stop()
-        if self._bots:
-            await asyncio.gather(*(b.stop() for b in self._bots.values()),
-                                 return_exceptions=True)
-        if self._module_manager:
-            await self._module_manager.shutdown()
-        if self._shared_log:
-            await self._shared_log.shutdown()
+        cleanup = [
+            self._dau_service and self._dau_service.stop(),
+            self._bots and asyncio.gather(*(b.stop() for b in self._bots.values()),
+                                           return_exceptions=True),
+            self._module_manager and self._module_manager.shutdown(),
+            self._shared_log and self._shared_log.shutdown(),
+        ]
+        for coro in cleanup:
+            if coro:
+                await coro
         if self._runner:
             try:
                 await asyncio.wait_for(self._runner.cleanup(), timeout=5)
@@ -310,12 +312,10 @@ class BotManager(EventHandlerMixin):
 
         if body.get('op') == 13:
             sig_resp = verify_and_respond(body, bot.secret)
-            if sig_resp:
-                log.info(f"[Webhook] 签名校验成功 appid={appid}")
-                return web.Response(text=sig_resp, content_type='application/json')
-            else:
-                log.warning(f"[Webhook] 签名校验失败 appid={appid}")
-                return web.json_response({'error': 'invalid validation'}, status=400)
+            success = bool(sig_resp)
+            log.info(f"[Webhook] 签名校验{'成功' if success else '失败'} appid={appid}")
+            return (web.Response(text=sig_resp, content_type='application/json')
+                    if success else web.json_response({'error': 'invalid validation'}, status=400))
 
         try:
             asyncio.create_task(self._on_event(Event.from_webhook(headers, body)))

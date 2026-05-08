@@ -167,49 +167,32 @@ class MessageSender:
 
     # ==================== 媒体回复 ====================
 
-    async def reply_image(self, event, image_data, content='', *,
-                          auto_delete_time=None, target_user_id=None, target_group_id=None):
-        return await self._send_media(event, image_data, 1, content,
-                                      auto_delete_time=auto_delete_time,
-                                      target_user_id=target_user_id,
-                                      target_group_id=target_group_id)
+    async def reply_image(self, event, image_data, content='', **kw):
+        return await self._send_media(event, image_data, 1, content, **kw)
 
-    async def reply_voice(self, event, voice_data, content='', *,
-                          auto_delete_time=None, target_user_id=None, target_group_id=None):
-        return await self._send_media(event, voice_data, 3, content,
-                                      auto_delete_time=auto_delete_time,
-                                      target_user_id=target_user_id,
-                                      target_group_id=target_group_id)
+    async def reply_voice(self, event, voice_data, content='', **kw):
+        return await self._send_media(event, voice_data, 3, content, **kw)
 
-    async def reply_video(self, event, video_data, content='', *,
-                          auto_delete_time=None, target_user_id=None, target_group_id=None):
-        return await self._send_media(event, video_data, 2, content,
-                                      auto_delete_time=auto_delete_time,
-                                      target_user_id=target_user_id,
-                                      target_group_id=target_group_id)
+    async def reply_video(self, event, video_data, content='', **kw):
+        return await self._send_media(event, video_data, 2, content, **kw)
 
     async def reply_file(self, event, file_data, content='', *, file_name=None,
                          auto_delete_time=None, target_user_id=None, target_group_id=None):
+        kw = dict(auto_delete_time=auto_delete_time,
+                  target_user_id=target_user_id, target_group_id=target_group_id)
+        # URL → 直接上传
         if isinstance(file_data, str) and file_data.startswith(('http://', 'https://')):
             file_info = await upload_media_via_url(self, event, file_data, 4,
-                                                   file_name=file_name,
-                                                   target_user_id=target_user_id,
-                                                   target_group_id=target_group_id)
-            if not file_info:
-                return None
-            return await self._send_media_payload(event, file_info, content, auto_delete_time,
-                                                  target_user_id=target_user_id,
-                                                  target_group_id=target_group_id)
+                                                   file_name=file_name, **kw)
+            return await self._send_media_payload(event, file_info, content,
+                                                  **kw) if file_info else None
+        # 本地路径 → 读取
         if isinstance(file_data, str) and os.path.exists(file_data):
-            if not file_name:
-                file_name = os.path.basename(file_data)
+            file_name = file_name or os.path.basename(file_data)
             with open(file_data, 'rb') as f:
                 file_data = f.read()
         return await self._send_media(event, file_data, 4, content,
-                                      file_name=file_name,
-                                      auto_delete_time=auto_delete_time,
-                                      target_user_id=target_user_id,
-                                      target_group_id=target_group_id)
+                                      file_name=file_name, **kw)
 
     async def reply_ark(self, event, template_id, kv_data, content='', *,
                         auto_delete_time=None):
@@ -522,20 +505,17 @@ class MessageSender:
 
     def _log_sent(self, payload, event, content):
         """发送成功后的日志记录 (Web面板 + 持久化)"""
-        text = content or payload.get('content', '') or ''
+        # 拼装日志文本
         md = payload.get('markdown')
-        if md:
-            text = md.get('content', text)
+        text = (md.get('content', '') if md else None) or content or payload.get('content', '') or ''
         if payload.get('msg_type') == MSG_TYPE_MEDIA:
             label = self._last_media_label or '[media]'
             self._last_media_label = ''
             text = f'{label} {text}'.rstrip() if text else label
-        reply_text = text or ''
-        # 将完整按钮结构附加到日志文本
         kb = payload.get('keyboard')
         if kb:
             try:
-                reply_text += '\n[keyboard] ' + json.dumps(kb, ensure_ascii=False)
+                text += '\n[keyboard] ' + json.dumps(kb, ensure_ascii=False)
             except Exception:
                 pass
         user_id = getattr(event, 'user_id', '') or ''
@@ -547,7 +527,7 @@ class MessageSender:
                     'bot_name': self._bot_name or self._appid,
                     'bot_qq': self._bot_qq or '',
                     'user_id': user_id, 'group_id': group_id,
-                    'content': reply_text, 'is_bot': True,
+                    'content': text, 'is_bot': True,
                     'direction': 'send',
                     'plugin_name': self._reply_plugin_name or '',
                 })
@@ -555,7 +535,7 @@ class MessageSender:
                 pass
         if self._reply_log_cb:
             try:
-                self._reply_log_cb(reply_text, user_id, group_id,
+                self._reply_log_cb(text, user_id, group_id,
                                    json.dumps(payload, ensure_ascii=False, default=str))
             except Exception:
                 pass

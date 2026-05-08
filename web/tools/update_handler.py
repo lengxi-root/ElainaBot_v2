@@ -138,7 +138,7 @@ async def handle_get_mirrors(request: web.Request):
         updater = _get_updater()
         cached = _load_mirror_cache()
         return web.json_response({'success': True, 'data': {
-            'mirrors': [m for m in GITHUB_FILE_MIRRORS],
+            'mirrors': list(GITHUB_FILE_MIRRORS),
             'fast_mirrors': cached,
             'custom_mirror': updater.custom_mirror,
         }})
@@ -149,7 +149,6 @@ async def handle_get_mirrors(request: web.Request):
 async def handle_test_mirrors(request: web.Request):
     """SSE 流式测速所有镜像, 每完成一个立即推送"""
     import json as _json
-    import time as _time
     from web.tools.updater import _test_one_mirror, GITHUB_FILE_MIRRORS, clear_mirror_cache
 
     clear_mirror_cache()

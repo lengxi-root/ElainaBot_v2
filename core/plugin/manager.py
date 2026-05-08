@@ -472,18 +472,14 @@ class PluginManager:
         user_id = event.user_id or ''
         appid = event.appid or self._appid
         et = event.event_type
-
-        # 注入 sender 到 event
         event._sender = sender
 
         # 黑名单 (纯内存查找, 无 IO)
         bl_type = self._check_blacklist(event)
-        if bl_type == 'user':
-            await event.reply(template_name='blacklist',
-                              template_vars={'user_id': user_id, 'reason': '未指明原因'})
-            return True
-        if bl_type == 'group':
-            await event.reply(template_name='group_blacklist')
+        if bl_type:
+            tpl = 'blacklist' if bl_type == 'user' else 'group_blacklist'
+            tvars = {'user_id': user_id, 'reason': '未指明原因'} if bl_type == 'user' else None
+            await event.reply(template_name=tpl, template_vars=tvars)
             return True
 
         # 维护模式
@@ -492,36 +488,27 @@ class PluginManager:
             return True
 
         # 拦截器
-        if self._all_interceptors:
-            loop = asyncio.get_running_loop()
-            for ic in self._all_interceptors:
-                try:
-                    if ic['is_coro']:
-                        result = await ic['func'](event)
-                    else:
-                        result = await loop.run_in_executor(None, ic['func'], event)
-                    if result is True:
-                        return True
-                except Exception as e:
-                    report_error(PLUGIN, ic.get('_plugin', '?'), e)
-
-        # 延迟获取 log_service (仅匹配到 handler 才需要)
-        log_service = None
+        for ic in self._all_interceptors:
+            try:
+                result = await ic['func'](event) if ic['is_coro'] else \
+                    await asyncio.get_running_loop().run_in_executor(None, ic['func'], event)
+                if result is True:
+                    return True
+            except Exception as e:
+                report_error(PLUGIN, ic.get('_plugin', '?'), e)
 
         # 匹配处理器 (支持 / 前缀自动去除)
         contents_to_try = (content[1:], content) if content[:1] == '/' and len(content) > 1 else (content,)
+        log_service = None
 
         for try_content in contents_to_try:
             for h in self._all_handlers:
-                if not self._check_bot_binding(h, appid):
-                    continue
-                if h['event_types'] and et not in h['event_types']:
-                    continue
-                if h['group_only'] and not event.is_group:
-                    continue
-                if h['direct_only'] and not event.is_direct:
-                    continue
-                if h['channel_only'] and not event.is_channel:
+                # 快速过滤 (位掩码级检查)
+                if (h['_allowed_bots'] is not None and appid not in h['_allowed_bots'])\
+                        or (h['event_types'] and et not in h['event_types'])\
+                        or (h['group_only'] and not event.is_group)\
+                        or (h['direct_only'] and not event.is_direct)\
+                        or (h['channel_only'] and not event.is_channel):
                     continue
                 match = h['compiled'].search(try_content)
                 if not match:
@@ -541,33 +528,35 @@ class PluginManager:
                 sender._reply_log_cb = _make_reply_log_cb(plugin_name, log_service)
                 sender._reply_plugin_name = plugin_name or ''
 
-                err_ctx = {'handler': h['name'], 'user_id': user_id,
-                           'group_id': event.group_id or '',
-                           'event_type': et, 'content': content[:200]}
                 try:
+                    fn, timeout = h['func'], 30
                     if h['is_coro']:
-                        await asyncio.wait_for(h['func'](event, match), timeout=30)
+                        await asyncio.wait_for(fn(event, match), timeout=timeout)
                     else:
-                        loop = asyncio.get_running_loop()
                         await asyncio.wait_for(
-                            loop.run_in_executor(None, h['func'], event, match), timeout=30)
+                            asyncio.get_running_loop().run_in_executor(None, fn, event, match),
+                            timeout=timeout)
                 except asyncio.TimeoutError:
                     report_error(PLUGIN, plugin_name or '?',
-                                 f"处理器 [{h['name']}] 超时(30s)", context=err_ctx)
+                                 f"处理器 [{h['name']}] 超时(30s)",
+                                 context={'handler': h['name'], 'user_id': user_id,
+                                          'event_type': et, 'content': content[:200]})
                 except Exception as e:
-                    report_error(PLUGIN, plugin_name or '?', e, context=err_ctx)
+                    report_error(PLUGIN, plugin_name or '?', e,
+                                 context={'handler': h['name'], 'user_id': user_id,
+                                          'group_id': event.group_id or '',
+                                          'event_type': et, 'content': content[:200]})
                 finally:
                     sender._reply_log_cb = None
                     sender._reply_plugin_name = ''
                 return True
 
         # 无匹配 -> 默认回复
-        if et in ('GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE'):
-            if cfg.get_bot_setting(appid, 'message.send_default_response', True):
-                excluded = cfg.get_bot_setting(appid, 'message.default_response_excluded_regex', []) or []
-                if not any(re.search(p, content) for p in excluded if p):
-                    await event.reply(template_name='default',
-                                      template_vars={'user_id': user_id})
+        if et in ('GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE') \
+                and cfg.get_bot_setting(appid, 'message.send_default_response', True):
+            excluded = cfg.get_bot_setting(appid, 'message.default_response_excluded_regex', []) or []
+            if not any(re.search(p, content) for p in excluded if p):
+                await event.reply(template_name='default', template_vars={'user_id': user_id})
 
         return False
 
@@ -625,16 +614,14 @@ class PluginManager:
     def _check_blacklist(self, event):
         appid = event.appid or self._appid
         user_id, group_id = event.user_id or '', event.group_id or ''
-        if user_id and cfg.get_bot_setting(appid, 'blacklist.user_enabled', False):
-            if user_id in self._blacklist_users:
-                return 'user'
-            if user_id in (cfg.get_bot_setting(appid, 'blacklist.user_list', []) or []):
-                return 'user'
-        if group_id and cfg.get_bot_setting(appid, 'blacklist.group_enabled', False):
-            if group_id in self._blacklist_groups:
-                return 'group'
-            if group_id in (cfg.get_bot_setting(appid, 'blacklist.group_list', []) or []):
-                return 'group'
+        if user_id and cfg.get_bot_setting(appid, 'blacklist.user_enabled', False) and (
+                user_id in self._blacklist_users or
+                user_id in (cfg.get_bot_setting(appid, 'blacklist.user_list', []) or [])):
+            return 'user'
+        if group_id and cfg.get_bot_setting(appid, 'blacklist.group_enabled', False) and (
+                group_id in self._blacklist_groups or
+                group_id in (cfg.get_bot_setting(appid, 'blacklist.group_list', []) or [])):
+            return 'group'
         return None
 
     def _is_owner(self, event):
@@ -642,9 +629,7 @@ class PluginManager:
         if not event.user_id:
             return False
         bot_cfg = cfg.get_bot_config(event.appid or self._appid)
-        if not bot_cfg:
-            return False
-        return event.user_id in (bot_cfg.get('owner_ids') or [])
+        return bool(bot_cfg) and event.user_id in (bot_cfg.get('owner_ids') or [])
 
     def add_blacklist_user(self, user_id):
         self._blacklist_users.add(user_id)
@@ -695,12 +680,6 @@ class PluginManager:
                           default_flow_style=False, sort_keys=False)
         except Exception as e:
             log.warning(f"保存插件机器人绑定失败: {e}")
-
-    @staticmethod
-    def _check_bot_binding(handler, appid):
-        """检查 handler 是否允许在指定 appid 上触发 (O(1) 集合查找)"""
-        allowed = handler.get('_allowed_bots')
-        return allowed is None or appid in allowed
 
     def get_plugin_bots(self):
         """获取插件机器人绑定配置 (供 Web API 读取)"""

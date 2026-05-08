@@ -92,12 +92,8 @@ async def handle_get_available_dates(request: web.Request):
 
 async def handle_get_chart_data(request: web.Request):
     """返回最近 N 天的折线图数据"""
-    days = int(request.query.get('days', '7'))
+    days = max(1, min(30, int(request.query.get('days', '7'))))
     appid_filter = request.query.get('appid', '')
-    if days < 1:
-        days = 7
-    if days > 30:
-        days = 30
 
     labels = []
     # 消息统计

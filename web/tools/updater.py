@@ -327,8 +327,7 @@ class FrameworkUpdater:
                             ct = resp.headers.get('content-type', '')
                             body = await resp.read()
                             if b'[' in body[:2] or b'{' in body[:2]:
-                                import json as _json
-                                return _json.loads(body)
+                                return json.loads(body)
                             log.debug(f"API 返回非 JSON: {ct}, url={u}")
                         else:
                             log.debug(f"API 状态码 {resp.status}: {u}")

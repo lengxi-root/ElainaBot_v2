@@ -216,7 +216,8 @@ class ModuleManager:
         """禁用模块"""
         async with self._lock:
             info = self._modules.get(name)
-            if not info or info.instance is None:
+            is_running = info and info.instance is not None
+            if not is_running:
                 if _persist:
                     self.set_module_enabled_persist(name, False)
                 return False
@@ -227,8 +228,7 @@ class ModuleManager:
             except Exception as e:
                 report_error(EXTENSION, name, e)
             get_hook_manager().unregister_owner(info.display_name or name)
-            info.instance = None
-            info.ctx = None
+            info.instance = info.ctx = None
             sys.modules.pop(f"modules.{name}", None)
             if _persist:
                 self.set_module_enabled_persist(name, False)
@@ -371,6 +371,5 @@ class ModuleManager:
 
     async def shutdown(self):
         """关闭所有已启用模块"""
-        for name, info in list(self._modules.items()):
-            if info.instance is not None:
-                await self.disable(name)
+        for name in [n for n, i in self._modules.items() if i.instance is not None]:
+            await self.disable(name)

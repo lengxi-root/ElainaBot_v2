@@ -2,6 +2,7 @@
 
 import os
 import re
+import ast
 import json
 import logging
 import traceback
@@ -249,26 +250,18 @@ async def handle_toggle_plugin(request: web.Request):
     if not valid:
         return web.json_response({'success': False, 'message': '无效路径'}, status=403)
 
-    if action == 'disable':
-        if not abs_path.endswith('.py'):
-            return web.json_response({'success': False, 'message': '只能禁用 .py'}, status=400)
-        new_abs = abs_path + '.ban'
-        if os.path.exists(new_abs):
-            return web.json_response({'success': False, 'message': '禁用文件已存在'}, status=409)
-        os.rename(abs_path, new_abs)
-        # 触发运行时热重载
-        await _try_reload_plugin(abs_path, plugins_dir)
-        return web.json_response({'success': True, 'message': '插件已禁用', 'new_path': new_abs.replace('\\', '/')})
-    else:
-        if not abs_path.endswith('.py.ban'):
-            return web.json_response({'success': False, 'message': '只能启用 .py.ban'}, status=400)
-        new_abs = abs_path[:-4]
-        if os.path.exists(new_abs):
-            return web.json_response({'success': False, 'message': '启用文件已存在'}, status=409)
-        os.rename(abs_path, new_abs)
-        # 触发运行时热重载
-        await _try_reload_plugin(new_abs, plugins_dir)
-        return web.json_response({'success': True, 'message': '插件已启用', 'new_path': new_abs.replace('\\', '/')})
+    # 统一 enable/disable 逻辑
+    is_disable = action == 'disable'
+    expect_ext = '.py' if is_disable else '.py.ban'
+    if not abs_path.endswith(expect_ext):
+        return web.json_response({'success': False, 'message': f'只能操作 {expect_ext}'}, status=400)
+    new_abs = (abs_path + '.ban') if is_disable else abs_path[:-4]
+    if os.path.exists(new_abs):
+        return web.json_response({'success': False, 'message': '目标文件已存在'}, status=409)
+    os.rename(abs_path, new_abs)
+    await _try_reload_plugin(new_abs if not is_disable else abs_path, plugins_dir)
+    label = '已禁用' if is_disable else '已启用'
+    return web.json_response({'success': True, 'message': f'插件{label}', 'new_path': new_abs.replace('\\', '/')})
 
 
 async def _try_reload_plugin(file_path, plugins_dir):
@@ -452,7 +445,6 @@ def _modules_dir():
 
 def _read_module_meta(entry_path):
     """通过 AST 读取 main.py 中的 __module_meta__"""
-    import ast
     try:
         with open(entry_path, 'r', encoding='utf-8') as f:
             tree = ast.parse(f.read())
@@ -563,12 +555,20 @@ async def handle_scan_modules(request: web.Request):
     return web.json_response({'success': True, 'modules': _scan_modules()})
 
 
+def _validate_config_path(raw_path):
+    """校验配置文件路径是否在 modules/ 或 plugins/ 下, 返回 (abs_path, error_response)"""
+    abs_path = os.path.abspath(os.path.normpath(raw_path))
+    allowed = (os.path.abspath(_modules_dir()), os.path.abspath(_plugins_dir()))
+    if not any(abs_path.startswith(d) for d in allowed):
+        return None, web.json_response({'success': False, 'message': '无效路径'}, status=403)
+    return abs_path, None
+
+
 def _extract_yaml_comments(raw_text):
     """从 YAML 原始文本提取注释, 返回 {key_path: comment} 扁平 dict
     支持顶层和嵌套 key 的行内注释 (key: value  # 注释)
     以及 key 上方一行的注释 (# 注释\\nkey: value)
     """
-    import re
     comments = {}
     lines = raw_text.split('\n')
     pending_comment = None
@@ -622,16 +622,11 @@ def _extract_yaml_comments(raw_text):
 async def handle_read_config(request: web.Request):
     """读取模块或插件的配置文件"""
     body = await request.json()
-    file_path = os.path.normpath(body.get('path', ''))
-    if not file_path:
+    if not body.get('path', ''):
         return web.json_response({'success': False, 'message': '缺少路径'}, status=400)
-
-    abs_path = os.path.abspath(file_path)
-    # 安全检查: 只允许 modules/ 和 plugins/ 下
-    modules_dir = os.path.abspath(_modules_dir())
-    plugins_dir = os.path.abspath(_plugins_dir())
-    if not (abs_path.startswith(modules_dir) or abs_path.startswith(plugins_dir)):
-        return web.json_response({'success': False, 'message': '无效路径'}, status=403)
+    abs_path, err = _validate_config_path(body['path'])
+    if err:
+        return err
     if not os.path.isfile(abs_path):
         return web.json_response({'success': False, 'message': '文件不存在'}, status=404)
 
@@ -672,17 +667,13 @@ async def handle_read_config(request: web.Request):
 async def handle_save_config(request: web.Request):
     """保存模块或插件的配置文件"""
     body = await request.json()
-    file_path = os.path.normpath(body.get('path', ''))
     content = body.get('content')
     fmt = body.get('format', 'raw')
-    if not file_path or content is None:
+    if not body.get('path', '') or content is None:
         return web.json_response({'success': False, 'message': '缺少参数'}, status=400)
-
-    abs_path = os.path.abspath(file_path)
-    modules_dir = os.path.abspath(_modules_dir())
-    plugins_dir = os.path.abspath(_plugins_dir())
-    if not (abs_path.startswith(modules_dir) or abs_path.startswith(plugins_dir)):
-        return web.json_response({'success': False, 'message': '无效路径'}, status=403)
+    abs_path, err = _validate_config_path(body['path'])
+    if err:
+        return err
 
     # 验证格式
     if fmt == 'yaml':

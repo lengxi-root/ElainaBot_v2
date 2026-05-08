@@ -250,31 +250,25 @@ class QQBotAPI:
     async def submit_template(self, bot_appid="", template_data=None, qrcode="", uin="", uid="", ticket=""):
         if not all([bot_appid, template_data, qrcode]):
             return {"retcode": 400, "msg": "参数不完整"}
-        resp = await self._request("POST", "https://bot.q.qq.com/cgi-bin/msg_tpl/create",
-                                   uin, uid, ticket,
-                                   {"bot_appid": bot_appid, "info": template_data, "qrcode": qrcode}, _BOT_HEADERS)
-        if resp.get("code") == 500:
-            return {"retcode": 500, "msg": resp.get("msg")}
-        return resp
+        return await self._tpl_action("create", uin, uid, ticket,
+                                      {"bot_appid": bot_appid, "info": template_data, "qrcode": qrcode})
 
     async def audit_templates(self, bot_appid="", tpl_ids=None, qrcode="", uin="", uid="", ticket=""):
-        if not all([bot_appid, tpl_ids, qrcode]):
-            return {"retcode": 400, "msg": "参数不完整"}
-        resp = await self._request("POST", "https://bot.q.qq.com/cgi-bin/msg_tpl/audit",
-                                   uin, uid, ticket,
-                                   {"bot_appid": int(bot_appid) if isinstance(bot_appid, str) else bot_appid,
-                                    "tpl_id": tpl_ids, "qrcode": qrcode}, _BOT_HEADERS)
-        if resp.get("code") == 500:
-            return {"retcode": 500, "msg": resp.get("msg")}
-        return resp
+        return await self._tpl_batch_action("audit", bot_appid, tpl_ids, qrcode, uin, uid, ticket)
 
     async def delete_templates(self, bot_appid="", tpl_ids=None, qrcode="", uin="", uid="", ticket=""):
+        return await self._tpl_batch_action("delete", bot_appid, tpl_ids, qrcode, uin, uid, ticket)
+
+    async def _tpl_batch_action(self, action, bot_appid, tpl_ids, qrcode, uin, uid, ticket):
         if not all([bot_appid, tpl_ids, qrcode]):
             return {"retcode": 400, "msg": "参数不完整"}
-        resp = await self._request("POST", "https://bot.q.qq.com/cgi-bin/msg_tpl/delete",
-                                   uin, uid, ticket,
-                                   {"bot_appid": int(bot_appid) if isinstance(bot_appid, str) else bot_appid,
-                                    "tpl_id": tpl_ids, "qrcode": qrcode}, _BOT_HEADERS)
+        appid_val = int(bot_appid) if isinstance(bot_appid, str) else bot_appid
+        return await self._tpl_action(action, uin, uid, ticket,
+                                      {"bot_appid": appid_val, "tpl_id": tpl_ids, "qrcode": qrcode})
+
+    async def _tpl_action(self, action, uin, uid, ticket, data):
+        resp = await self._request("POST", f"https://bot.q.qq.com/cgi-bin/msg_tpl/{action}",
+                                   uin, uid, ticket, data, _BOT_HEADERS)
         if resp.get("code") == 500:
             return {"retcode": 500, "msg": resp.get("msg")}
         return resp

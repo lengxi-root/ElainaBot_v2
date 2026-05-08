@@ -55,6 +55,21 @@ def _ranked_mirror_urls(raw_url):
     return urls
 
 
+async def _try_fetch_json(session, urls, headers, timeout):
+    """依次尝试 URL 列表下载 JSON, 成功返回解析结果, 全部失败返回 None"""
+    for url in urls:
+        try:
+            async with session.get(url, headers=headers, timeout=timeout,
+                                   ssl=False, allow_redirects=True) as resp:
+                if resp.status == 200:
+                    body = await resp.read()
+                    if body[:1] in (b'[', b'{'):
+                        return json.loads(body)
+        except Exception:
+            continue
+    return None
+
+
 async def _fetch_plugin_json(force=False):
     """从 GitHub 获取 plugins.json, 按镜像排名依次尝试"""
     global _plugin_cache, _plugin_cache_ts
@@ -66,37 +81,15 @@ async def _fetch_plugin_json(force=False):
     headers = {'User-Agent': 'ElainaBot/1.0'}
     timeout = _aiohttp.ClientTimeout(total=10)
     async with _aiohttp.ClientSession() as session:
-        for url in _ranked_mirror_urls(raw_url):
-            try:
-                async with session.get(url, headers=headers, timeout=timeout,
-                                       ssl=False, allow_redirects=True) as resp:
-                    if resp.status == 200:
-                        body = await resp.read()
-                        if body[:1] in (b'[', b'{'):
-                            data = json.loads(body)
-                            _plugin_cache = data
-                            _plugin_cache_ts = now
-                            return data
-            except Exception:
-                continue
-    # 全部失败 → 重新测速后再试一次
-    from web.tools.updater import get_fast_mirrors
-    await get_fast_mirrors(force=True)
-    async with _aiohttp.ClientSession() as session:
-        for url in _ranked_mirror_urls(raw_url):
-            try:
-                async with session.get(url, headers=headers, timeout=timeout,
-                                       ssl=False, allow_redirects=True) as resp:
-                    if resp.status == 200:
-                        body = await resp.read()
-                        if body[:1] in (b'[', b'{'):
-                            data = json.loads(body)
-                            _plugin_cache = data
-                            _plugin_cache_ts = now
-                            return data
-            except Exception:
-                continue
-    return None
+        data = await _try_fetch_json(session, _ranked_mirror_urls(raw_url), headers, timeout)
+    if not data:
+        from web.tools.updater import get_fast_mirrors
+        await get_fast_mirrors(force=True)
+        async with _aiohttp.ClientSession() as session:
+            data = await _try_fetch_json(session, _ranked_mirror_urls(raw_url), headers, timeout)
+    if data:
+        _plugin_cache, _plugin_cache_ts = data, now
+    return data
 
 
 def _convert_github_url(url):
@@ -137,6 +130,18 @@ def _github_to_archive(url, branch='main'):
 
 # ==================== 市场列表 ====================
 
+_SAFE_NAME_RE = re.compile(r'[^\w\- ]')
+
+
+def _extract_plugins(data):
+    """从缓存数据提取插件列表 (兼容 list 和 dict 格式)"""
+    return data if isinstance(data, list) else data.get('plugins', [])
+
+
+def _safe_name(name):
+    return _SAFE_NAME_RE.sub('', name).strip()
+
+
 async def handle_market_list(request: web.Request):
     """获取插件市场列表"""
     search = request.query.get('search', '').lower()
@@ -145,8 +150,7 @@ async def handle_market_list(request: web.Request):
     if data is None:
         return web.json_response({'success': False, 'message': '无法连接插件库, 请检查网络'})
 
-    plugins = data if isinstance(data, list) else data.get('plugins', [])
-
+    plugins = _extract_plugins(data)
     if category:
         plugins = [p for p in plugins if p.get('category', '') == category]
     if search:
@@ -159,7 +163,7 @@ async def handle_market_list(request: web.Request):
     installed_plugins = _get_installed_names()
     installed_modules = _get_installed_module_names()
     for p in plugins:
-        safe = "".join(c for c in p.get('name', '') if c.isalnum() or c in ('_', '-', ' ')).strip()
+        safe = _safe_name(p.get('name', ''))
         if p.get('type') == 'module':
             p['installed'] = safe in installed_modules
             if p['installed']:
@@ -177,8 +181,7 @@ async def handle_market_categories(request: web.Request):
     data = await _fetch_plugin_json()
     if data is None:
         return web.json_response({'success': False, 'message': '无法连接插件库'})
-    plugins = data if isinstance(data, list) else data.get('plugins', [])
-    cats = sorted(set(p.get('category', '未分类') for p in plugins))
+    cats = sorted(set(p.get('category', '未分类') for p in _extract_plugins(data)))
     return web.json_response({'success': True, 'data': cats})
 
 
@@ -189,11 +192,9 @@ async def handle_market_detail(request: web.Request):
     data = await _fetch_plugin_json()
     if data is None:
         return web.json_response({'success': False, 'message': '无法连接插件库'})
-    plugins = data if isinstance(data, list) else data.get('plugins', [])
-    for p in plugins:
-        if p.get('name') == name:
-            return web.json_response({'success': True, 'data': p})
-    return web.json_response({'success': False, 'message': '插件不存在'})
+    match = next((p for p in _extract_plugins(data) if p.get('name') == name), None)
+    return (web.json_response({'success': True, 'data': match}) if match
+            else web.json_response({'success': False, 'message': '插件不存在'}))
 
 
 async def handle_market_refresh(request: web.Request):
@@ -201,8 +202,8 @@ async def handle_market_refresh(request: web.Request):
     data = await _fetch_plugin_json(force=True)
     if data is None:
         return web.json_response({'success': False, 'message': '刷新失败, 无法连接插件库'})
-    plugins = data if isinstance(data, list) else data.get('plugins', [])
-    return web.json_response({'success': True, 'message': f'已刷新, 共 {len(plugins)} 个插件'})
+    total = len(_extract_plugins(data))
+    return web.json_response({'success': True, 'message': f'已刷新, 共 {total} 个插件'})
 
 
 # ==================== 预览/安装 ====================
@@ -354,8 +355,7 @@ def _install_py(content, plugin_name, url):
     fname = url.split('/')[-1].split('?')[0]
     if not fname.endswith('.py'):
         fname = f"{plugin_name}.py"
-    safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip() \
-        or fname.replace('.py', '')
+    safe = _safe_name(plugin_name) or fname.replace('.py', '')
     dest_dir = os.path.join(plugins_dir, safe)
     os.makedirs(dest_dir, exist_ok=True)
     with open(os.path.join(dest_dir, fname), 'wb') as f:
@@ -366,7 +366,7 @@ def _install_py(content, plugin_name, url):
 def _install_zip(content, plugin_name):
     """解压 zip 到 plugins/<plugin_name>/, 自动去除 GitHub archive 的根目录"""
     plugins_dir = _plugins_dir()
-    safe = "".join(c for c in plugin_name if c.isalnum() or c in ('_', '-', ' ')).strip() or 'unknown'
+    safe = _safe_name(plugin_name) or 'unknown'
     dest_dir = os.path.join(plugins_dir, safe)
     try:
         with zipfile.ZipFile(io.BytesIO(content), 'r') as zf:
@@ -411,7 +411,7 @@ async def handle_market_uninstall(request: web.Request):
     if not item_name:
         return web.json_response({'success': False, 'message': '缺少名称'}, status=400)
 
-    safe = "".join(c for c in item_name if c.isalnum() or c in ('_', '-', ' ')).strip()
+    safe = _safe_name(item_name)
     if not safe:
         return web.json_response({'success': False, 'message': '无效名称'}, status=400)
 
@@ -507,7 +507,7 @@ async def _install_module(github_url, module_name, branch='main'):
       1. 官方模块: 仓库含 modules/<name>/ → 只提取该子目录
       2. 第三方模块: 整个仓库就是模块 → 全部装到 modules/<name>/
     """
-    safe = "".join(c for c in module_name if c.isalnum() or c in ('_', '-', ' ')).strip() or 'unknown'
+    safe = _safe_name(module_name) or 'unknown'
     url = _github_to_archive(github_url, branch)
     log.info(f"模块安装: {safe} ← {url}")
 

@@ -300,26 +300,24 @@ async def handle_send_message(request: web.Request):
         bot_qq = getattr(bot, 'robot_qq', '') or ''
 
         # 根据消息类型发送
+        is_group = chat_type == 'group'
+        gid = chat_id if is_group else None
+        uid = chat_id if not is_group else None
+
         if msg_type == 'media' and content:
             ok, data = await _send_media_url(
                 sender, content, file_type=media_file_type,
-                group_id=chat_id if chat_type == 'group' else None,
-                user_id=chat_id if chat_type != 'group' else None,
-                msg_id=msg_id)
+                group_id=gid, user_id=uid, msg_id=msg_id)
 
         elif msg_type == 'ark' and content:
             ok, data = await _send_ark(
                 sender, ark_template_id, content,
-                group_id=chat_id if chat_type == 'group' else None,
-                user_id=chat_id if chat_type != 'group' else None,
-                msg_id=msg_id)
+                group_id=gid, user_id=uid, msg_id=msg_id)
 
         elif msg_type == 'text' and image_data:
             ok, data = await _send_text_with_image(
                 sender, content, image_data,
-                group_id=chat_id if chat_type == 'group' else None,
-                user_id=chat_id if chat_type != 'group' else None,
-                msg_id=msg_id)
+                group_id=gid, user_id=uid, msg_id=msg_id)
 
         else:
             api_msg_type = 2 if msg_type == 'markdown' else 0
@@ -336,17 +334,13 @@ async def handle_send_message(request: web.Request):
         # 构建显示内容
         display = _build_display(msg_type, content, image_data, media_file_type, ark_template_id, media_label)
 
+        send_payload = locals().get('actual_payload') or {'msg_type': msg_type, 'content': content}
         if ok:
-            # 记录到消息数据库
-            send_payload = locals().get('actual_payload') or {'msg_type': msg_type, 'content': content}
             _log_sent_message(bot, chat_type, chat_id, display, bot_appid, bot_name, bot_qq, send_payload)
             return web.json_response({'success': True, 'message': '发送成功'})
-        else:
-            err_msg = data.get('message', '发送失败') if isinstance(data, dict) else str(data)
-            # 记录到报错数据库 (传真实 API payload)
-            send_payload = locals().get('actual_payload') or {'msg_type': msg_type, 'content': content}
-            _log_send_error(bot, msg_type, chat_type, chat_id, send_payload, data, bot_appid, msg_id)
-            return web.json_response({'success': False, 'message': err_msg})
+        err_msg = data.get('message', '发送失败') if isinstance(data, dict) else str(data)
+        _log_send_error(bot, msg_type, chat_type, chat_id, send_payload, data, bot_appid, msg_id)
+        return web.json_response({'success': False, 'message': err_msg})
 
     except Exception as e:
         import traceback

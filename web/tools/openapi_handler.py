@@ -70,6 +70,17 @@ def _ok(**kwargs):
     return web.json_response({'success': True, **kwargs})
 
 
+def _require_api_and_login(body):
+    """api + 登录状态校验, 返回 (api, ud, err_resp)"""
+    api = _get_bot_api()
+    if not api:
+        return None, None, _err('bot_api 模块未加载')
+    ud = _check_login(body.get('user_id', 'web_user'))
+    if not ud:
+        return api, None, _err('未登录')
+    return api, ud, None
+
+
 # ==================== 登录 ====================
 
 async def handle_start_login(request: web.Request):
@@ -126,13 +137,10 @@ async def handle_logout(request: web.Request):
 # ==================== 机器人数据 ====================
 
 async def handle_get_botlist(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     res = await api.get_bot_list(uin=ud.get('uin'), quid=ud.get('developerId'), ticket=ud.get('ticket'))
     if res.get('code') != 0:
         return _err('登录失效')
@@ -142,13 +150,10 @@ async def handle_get_botlist(request: web.Request):
 
 
 async def handle_get_botdata(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
     try:
         cred = dict(uin=ud.get('uin'), quid=ud.get('developerId'), ticket=ud.get('ticket'), appid=appid)
@@ -186,13 +191,10 @@ async def handle_get_botdata(request: web.Request):
 
 
 async def handle_get_notifications(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     res = await api.get_private_messages(uin=ud.get('uin'), quid=ud.get('developerId'), ticket=ud.get('ticket'))
     if res.get('code', 0) != 0:
         return _err('获取通知失败')
@@ -210,6 +212,7 @@ async def handle_verify_saved_login(request: web.Request):
         return _err('bot_api 模块未加载')
     body = await request.json()
     user_id = body.get('user_id', 'web_user')
+    # 此处不用 _require_api_and_login, 因为需见未登录时也返回 valid=False
     ud = _openapi_user_data.get(user_id)
     if not ud:
         return _ok(valid=False, message='没有保存的登录信息')
@@ -228,13 +231,10 @@ async def handle_verify_saved_login(request: web.Request):
 # ==================== 白名单 ====================
 
 async def handle_get_whitelist(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
     if not appid:
         return _err('缺少 AppID')
@@ -247,40 +247,36 @@ async def handle_get_whitelist(request: web.Request):
     return _ok(data={'ip_list': ips, 'total': len(ips)})
 
 
-async def handle_update_whitelist(request: web.Request):
-    """需要前端先获取 QR 授权，再传 qrcode 过来执行"""
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
-    body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+async def _batch_whitelist_op(body, action='add'):
+    """白名单批量操作公共逻辑"""
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
-    qrcode = body.get('qrcode', '')
-    ip_list = body.get('ip_list', [])
-    if not appid or not qrcode or not ip_list:
+    qrcode, ip_list = body.get('qrcode', ''), body.get('ip_list', [])
+    if not all([appid, qrcode, ip_list]):
         return _err('参数不完整')
+    cred = dict(appid=appid, uin=ud.get('uin'), uid=ud.get('developerId'), ticket=ud.get('ticket'), qrcode=qrcode)
     success_count, failed_ips = 0, []
     for ip in ip_list:
-        res = await api.update_white_list(appid=appid, uin=ud.get('uin'), uid=ud.get('developerId'),
-                                          ticket=ud.get('ticket'), qrcode=qrcode, ip=ip, action='add')
+        res = await api.update_white_list(**cred, ip=ip, action=action)
         if res.get('code', 0) == 0:
             success_count += 1
         else:
             failed_ips.append(ip)
     return _ok(message=f'成功 {success_count} 个，失败 {len(failed_ips)} 个',
-               data={'success_count': success_count, 'failed_ips': failed_ips})
+               data={'success_count': success_count, 'failed_count': len(failed_ips), 'failed_ips': failed_ips})
+
+
+async def handle_update_whitelist(request: web.Request):
+    return await _batch_whitelist_op(await request.json(), 'add')
 
 
 async def handle_get_delete_qr(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
     if not appid:
         return _err('缺少 AppID')
@@ -296,13 +292,10 @@ async def handle_get_delete_qr(request: web.Request):
 
 
 async def handle_check_delete_auth(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
     qrcode = body.get('qrcode', '')
     if not appid or not qrcode:
@@ -314,13 +307,10 @@ async def handle_check_delete_auth(request: web.Request):
 
 
 async def handle_execute_delete_ip(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
     body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
+    api, ud, err = _require_api_and_login(body)
+    if err:
+        return err
     appid = body.get('appid') or ud.get('appId')
     ip, qrcode = body.get('ip', '').strip(), body.get('qrcode', '')
     if not all([appid, ip, qrcode]):
@@ -333,24 +323,4 @@ async def handle_execute_delete_ip(request: web.Request):
 
 
 async def handle_batch_add_whitelist(request: web.Request):
-    api = _get_bot_api()
-    if not api:
-        return _err('bot_api 模块未加载')
-    body = await request.json()
-    ud = _check_login(body.get('user_id', 'web_user'))
-    if not ud:
-        return _err('未登录')
-    appid = body.get('appid') or ud.get('appId')
-    ip_list, qrcode = body.get('ip_list', []), body.get('qrcode', '')
-    if not all([appid, ip_list, qrcode]):
-        return _err('缺少必要参数')
-    success_count, failed_ips = 0, []
-    for ip in ip_list:
-        res = await api.update_white_list(appid=appid, uin=ud.get('uin'), uid=ud.get('developerId'),
-                                          ticket=ud.get('ticket'), qrcode=qrcode, ip=ip, action='add')
-        if res.get('code', 0) == 0:
-            success_count += 1
-        else:
-            failed_ips.append(ip)
-    return _ok(message=f'批量添加完成：成功{success_count}个，失败{len(failed_ips)}个',
-               data={'success_count': success_count, 'failed_count': len(failed_ips), 'failed_ips': failed_ips})
+    return await _batch_whitelist_op(await request.json(), 'add')

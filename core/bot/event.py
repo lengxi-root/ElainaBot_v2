@@ -35,10 +35,11 @@ class _EventDedup:
             self._seen = {k: v for k, v in self._seen.items() if v > now}
             self._next_purge = now + 60
         for eid in ids:
-            if eid and eid in self._seen:
+            if not eid:
+                continue
+            if eid in self._seen:
                 return True
-            if eid:
-                self._seen[eid] = now + _DEDUP_TTL
+            self._seen[eid] = now + _DEDUP_TTL
         return False
 
 
@@ -61,24 +62,24 @@ class EventHandlerMixin:
 
         et = event.event_type
 
-        # 去重
+        # 去重 (setdefault 避免二次查找)
         if cfg.get_bot_setting(appid, 'dedup.enabled', False):
-            dedup = self._dedup.get(appid)
-            if dedup is None:
-                dedup = _EventDedup()
-                self._dedup[appid] = dedup
+            dedup = self._dedup.setdefault(appid, _EventDedup())
             if dedup.is_dup(event.message_id, event.event_id):
                 return
 
         # union_id 交换
         if event.user_id and event.union_openid:
-            swap_group = cfg.get_bot_setting(appid, 'identity.use_union_id_for_group', False)
-            swap_chan = cfg.get_bot_setting(appid, 'identity.use_union_id_for_channel', True)
-            if (swap_group if event.is_group else swap_chan if event.is_channel else swap_group):
+            need_swap = (cfg.get_bot_setting(appid, 'identity.use_union_id_for_group', False)
+                         if event.is_group else
+                         cfg.get_bot_setting(appid, 'identity.use_union_id_for_channel', True)
+                         if event.is_channel else
+                         cfg.get_bot_setting(appid, 'identity.use_union_id_for_group', False))
+            if need_swap:
                 event.user_id, event.union_openid, _ = swap_ids(
                     event.raw_user_id, event.union_openid, True)
 
-        # 生命周期事件
+        # 生命周期事件 → 提前返回
         lc = self._LIFECYCLE_HANDLERS.get(et)
         if lc:
             await lc(self, bot, event)
@@ -88,11 +89,11 @@ class EventHandlerMixin:
 
         # 消息日志 + 用户追踪
         if et in MESSAGE_TYPES:
-            raw_json = json.dumps(event.raw, ensure_ascii=False)
             log_entry = {
                 'type': et, 'message_id': event.message_id or '',
                 'user_id': event.user_id or '', 'group_id': event.group_id or '',
-                'content': event.content or '', 'raw_message': raw_json,
+                'content': event.content or '',
+                'raw_message': json.dumps(event.raw, ensure_ascii=False),
             }
             bot.log_service.add_sync('message', log_entry)
             self._push_web_log('message', {
@@ -104,27 +105,27 @@ class EventHandlerMixin:
                 asyncio.create_task(self._track_user(bot, event, appid))
 
         # 插件分发
-        if self._plugin_manager:
-            try:
-                await self._plugin_manager.dispatch(event, bot.sender)
-            except Exception as e:
-                report_error(FRAMEWORK, "事件分发", e,
-                             context={'appid': appid, 'event_type': et,
-                                      'user_id': event.user_id})
-                self._push_web_log('error', {
-                    'appid': appid, 'source': '事件分发',
-                    'content': str(e), 'event_type': et,
-                })
-            _dt = time.time() - _t0
-            if _dt > 1:
-                msg = (f"[性能] 事件处理耗时 {_dt*1000:.0f}ms "
-                       f"(分发={_dt*1000:.0f}ms) "
-                       f"content={event.content[:50] if event.content else ''}")
-                log.warning(msg)
-                self._push_web_log('framework', {
-                    'appid': appid, 'source': '性能',
-                    'content': msg,
-                })
+        if not self._plugin_manager:
+            return
+        try:
+            await self._plugin_manager.dispatch(event, bot.sender)
+        except Exception as e:
+            report_error(FRAMEWORK, "事件分发", e,
+                         context={'appid': appid, 'event_type': et,
+                                  'user_id': event.user_id})
+            self._push_web_log('error', {
+                'appid': appid, 'source': '事件分发',
+                'content': str(e), 'event_type': et,
+            })
+        _dt = time.time() - _t0
+        if _dt > 1:
+            msg = (f"[性能] 事件处理耗时 {_dt*1000:.0f}ms "
+                   f"(分发={_dt*1000:.0f}ms) "
+                   f"content={event.content[:50] if event.content else ''}")
+            log.warning(msg)
+            self._push_web_log('framework', {
+                'appid': appid, 'source': '性能', 'content': msg,
+            })
 
     # ==================== 生命周期 ====================
 
@@ -196,6 +197,7 @@ class EventHandlerMixin:
         username = getattr(event, 'username', '') or ''
         now = time.time()
 
+        # 定期清理过期缓存
         if now - self._cache_clean_ts > 600:
             self._cache_clean_ts = now
             self._known_users = {k: v for k, v in self._known_users.items() if v > now}
@@ -221,16 +223,16 @@ class EventHandlerMixin:
         self._known_users[uid] = now + _USER_CACHE_TTL
         await self._run_side_tasks(bot, event, gid)
 
-        # 新用户首次私聊 → 欢迎
-        if not existing and event.is_direct:
-            if cfg.get_bot_setting(appid, 'welcome.new_user_welcome', False):
-                try:
-                    total = await bot.log_service.db_fetch_value(
-                        "SELECT COUNT(*) FROM users", default=1)
-                    await bot.sender.reply(event, template_name='user_welcome',
-                                           template_vars={'user_id': uid, 'user_count': str(total)})
-                except Exception as e:
-                    report_error(FRAMEWORK, "新用户欢迎", e, context={'appid': appid})
+        # 新用户首次私聊 → 欢迎 (合并条件)
+        if not existing and event.is_direct \
+                and cfg.get_bot_setting(appid, 'welcome.new_user_welcome', False):
+            try:
+                total = await bot.log_service.db_fetch_value(
+                    "SELECT COUNT(*) FROM users", default=1)
+                await bot.sender.reply(event, template_name='user_welcome',
+                                       template_vars={'user_id': uid, 'user_count': str(total)})
+            except Exception as e:
+                report_error(FRAMEWORK, "新用户欢迎", e, context={'appid': appid})
 
     # ==================== 群组成员记录 ====================
 
@@ -253,11 +255,24 @@ class EventHandlerMixin:
             entry['last_active'] = today
         return True
 
+    @staticmethod
+    def _parse_user_map(raw_list):
+        """将 DB 中的 users JSON 列表解析为 {uid: entry} dict"""
+        result = {}
+        for item in raw_list:
+            if isinstance(item, dict):
+                uid = item.get('userid', '')
+                if uid:
+                    result[uid] = item
+            elif item:
+                result[item] = _NEW_USER_ENTRY(item, '')
+        return result
+
     async def _add_user_to_group(self, bot, group_id, user_id):
         uid = str(user_id)
         today = datetime.now().strftime('%Y-%m-%d')
 
-        # 1. 内存缓存
+        # 1. 内存缓存命中
         cached = self._group_users_cache.get(group_id)
         if cached:
             expire_ts, user_map = cached
@@ -271,17 +286,11 @@ class EventHandlerMixin:
 
         # 2. DB 加载
         try:
-            loop = asyncio.get_running_loop()
-            rows = await loop.run_in_executor(
+            rows = await asyncio.get_running_loop().run_in_executor(
                 None, bot.log_service.query_data,
                 "SELECT users FROM groups_users WHERE group_id=?", (group_id,))
             if rows:
-                raw = json.loads(rows[0].get('users', '[]'))
-                user_map = {
-                    (item if isinstance(item, str) else item.get('userid', '')):
-                    (item if isinstance(item, dict) else _NEW_USER_ENTRY(item, ''))
-                    for item in raw if (item if isinstance(item, str) else item.get('userid'))
-                }
+                user_map = self._parse_user_map(json.loads(rows[0].get('users', '[]')))
                 self._upsert_group_user(user_map, uid, today)
                 bot.log_service.db_queue(
                     "UPDATE groups_users SET users=? WHERE group_id=?",
