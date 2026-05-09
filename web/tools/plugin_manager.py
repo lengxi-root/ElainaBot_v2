@@ -564,6 +564,43 @@ def _validate_config_path(raw_path):
     return abs_path, None
 
 
+def _ys(v):
+    if v is None: return 'null'
+    if isinstance(v, bool): return 'true' if v else 'false'
+    if not isinstance(v, str): return str(v)
+    if not v: return "''"
+    return f"'{v}'" if any(c in v for c in ':#[]{}|>&*!?,') or v[0] == ' ' or v[-1] == ' ' else v
+
+
+def _rebuild_yaml(data, cmt, pre='', ind=0):
+    if not isinstance(data, dict): return []
+    out, pad = [], '  ' * ind
+    for k, v in data.items():
+        p = f'{pre}.{k}' if pre else k
+        c = cmt.get(p, '')
+        if isinstance(v, dict):
+            if c: out.append(f'{pad}# {c}')
+            out.append(f'{pad}{k}:')
+            out.extend(_rebuild_yaml(v, cmt, p, ind + 1))
+        elif isinstance(v, list):
+            if c: out.append(f'{pad}# {c}')
+            if not v:
+                out.append(f'{pad}{k}: []')
+            else:
+                out.append(f'{pad}{k}:')
+                cp = '  ' * (ind + 1)
+                for it in v:
+                    if isinstance(it, dict):
+                        for i, (ik, iv) in enumerate(it.items()):
+                            out.append(f"{cp}{'- ' if not i else '  '}{ik}: {_ys(iv)}")
+                    else:
+                        out.append(f'{cp}- {_ys(it)}')
+        else:
+            s = _ys(v)
+            out.append(f'{pad}{k}: {s}  # {c}' if c else f'{pad}{k}: {s}')
+    return out
+
+
 def _extract_yaml_comments(raw_text):
     """从 YAML 原始文本提取注释, 返回 {key_path: comment} 扁平 dict
     支持顶层和嵌套 key 的行内注释 (key: value  # 注释)
@@ -675,12 +712,20 @@ async def handle_save_config(request: web.Request):
     if err:
         return err
 
-    # 验证格式
+    # 验证格式 + 注释保留
     if fmt == 'yaml':
         try:
-            yaml.safe_load(content)  # 仅验证语法, 不重新序列化, 保留注释
+            parsed = yaml.safe_load(content)
         except Exception as e:
             return web.json_response({'success': False, 'message': f'YAML 格式错误: {e}'}, status=400)
+        if isinstance(parsed, dict) and os.path.isfile(abs_path):
+            try:
+                with open(abs_path, 'r', encoding='utf-8') as f:
+                    old_comments = _extract_yaml_comments(f.read())
+                if old_comments:
+                    content = '\n'.join(_rebuild_yaml(parsed, old_comments)) + '\n'
+            except Exception:
+                pass
     elif fmt == 'json':
         try:
             data = json.loads(content)
@@ -701,10 +746,11 @@ async def handle_save_config(request: web.Request):
 
     # 自动重载所属模块
     reloaded = ''
-    if abs_path.startswith(modules_dir) and _bot_manager:
+    mdir = os.path.abspath(_modules_dir())
+    if abs_path.startswith(mdir) and _bot_manager:
         mm = getattr(_bot_manager, 'module_manager', None)
         if mm:
-            rel = os.path.relpath(abs_path, modules_dir)
+            rel = os.path.relpath(abs_path, mdir)
             mod_name = rel.split(os.sep)[0]
             if mm.is_enabled(mod_name):
                 try:

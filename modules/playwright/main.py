@@ -42,9 +42,8 @@ log = get_logger(EXTENSION, "Playwright")
 _instance = None
 
 _DEFAULTS = {
-    'enabled': False,
     'headless': True,
-    'max_pages': 5,
+    'max_pages': 2,
     'idle_timeout': 300,
     'default_timeout': 30000,
     'default_viewport_width': 1280,
@@ -57,11 +56,13 @@ _DEFAULTS = {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
+        '--single-process',
+        '--disable-extensions',
+        '--disable-background-networking',
     ],
 }
 
 _COMMENTS = {
-    'enabled': '是否启用 Playwright (关闭后不会启动任何浏览器进程)',
     'headless': '是否无头模式 (无界面)',
     'max_pages': '最大并发页面数',
     'idle_timeout': '浏览器空闲超时 (秒), 超时后自动关闭, 下次使用时重新启动',
@@ -80,18 +81,8 @@ _COMMENTS = {
 async def setup(ctx):
     global _instance
     cfg = ctx.ensure_config(_DEFAULTS, comments=_COMMENTS)
-    if not cfg.get('enabled', True):
-        log.info("⏭️ Playwright 已禁用")
-        _instance = PlaywrightRenderer(cfg, disabled=True)
-        return _instance
     _instance = PlaywrightRenderer(cfg)
-    await _instance.initialize()
-    if _instance.is_available():
-        idle = cfg.get('idle_timeout', 300)
-        log.info(f"✅ Playwright 就绪 [{cfg['browser_type']}] "
-                 f"按需启动浏览器, 空闲 {idle}s 自动关闭")
-    else:
-        log.warning("❌ Playwright 初始化失败, 截图功能不可用")
+    log.info(f"✅ Playwright 就绪 [{cfg['browser_type']}] 首次调用时启动浏览器")
     return _instance
 
 
@@ -109,38 +100,26 @@ class PlaywrightRenderer:
 
     __slots__ = (
         '_cfg', '_pw', '_browser', '_semaphore',
-        '_available', '_lock', '_active_pages',
-        '_last_release', '_cleanup_task', '_disabled',
+        '_lock', '_active_pages',
+        '_last_release', '_cleanup_task', '_closed',
     )
 
-    def __init__(self, cfg, disabled=False):
+    def __init__(self, cfg):
         self._cfg = cfg
-        self._disabled = disabled
         self._pw = None
         self._browser = None
-        self._semaphore = asyncio.Semaphore(cfg.get('max_pages', 5))
-        self._available = False
+        self._semaphore = asyncio.Semaphore(cfg.get('max_pages', 2))
         self._lock = asyncio.Lock()
         self._active_pages = 0
         self._last_release = 0.0
         self._cleanup_task = None
-
-    async def initialize(self):
-        """仅启动 Playwright 引擎, 不启动浏览器 (按需启动)"""
-        try:
-            from playwright.async_api import async_playwright
-            self._pw = await async_playwright().start()
-            self._available = True
-            self._cleanup_task = asyncio.create_task(self._idle_cleanup_loop())
-        except Exception as e:
-            log.error(f"Playwright 初始化失败: {e}")
-            self._available = False
+        self._closed = False
 
     def is_available(self):
-        return not self._disabled and self._available and self._pw is not None
+        return not self._closed
 
     async def close(self):
-        self._available = False
+        self._closed = True
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
         await self._close_browser()
@@ -168,22 +147,19 @@ class PlaywrightRenderer:
             if self._browser and self._browser.is_connected():
                 return True
             restarting = self._browser is not None
-            if restarting:
-                log.warning("浏览器已断开, 正在重启...")
-            else:
-                log.info("正在按需启动浏览器...")
+            log.info("浏览器已断开, 正在重启..." if restarting else "正在按需启动浏览器...")
             try:
                 if not self._pw:
                     from playwright.async_api import async_playwright
                     self._pw = await async_playwright().start()
-                browser_type = self._cfg.get('browser_type', 'chromium')
-                launcher = getattr(self._pw, browser_type, self._pw.chromium)
+                launcher = getattr(self._pw, self._cfg.get('browser_type', 'chromium'), self._pw.chromium)
                 self._browser = await launcher.launch(
                     headless=self._cfg.get('headless', True),
                     args=self._cfg.get('launch_args', []),
                 )
-                self._available = True
                 log.info("✅ 浏览器已启动" if not restarting else "✅ 浏览器已重启")
+                if not self._cleanup_task or self._cleanup_task.done():
+                    self._cleanup_task = asyncio.create_task(self._idle_cleanup_loop())
                 return True
             except Exception as e:
                 log.error(f"浏览器启动失败: {e}")
@@ -219,10 +195,8 @@ class PlaywrightRenderer:
                 await page.goto(url)
                 data = await page.screenshot()
         """
-        if self._disabled:
-            raise RuntimeError("Playwright 已禁用, 请在配置中设置 enabled: true")
-        if not self._available:
-            raise RuntimeError("Playwright 不可用")
+        if self._closed:
+            raise RuntimeError("Playwright 已关闭")
 
         async with self._semaphore:
             if not await self._ensure_browser():
@@ -247,6 +221,8 @@ class PlaywrightRenderer:
                 if self._active_pages <= 0:
                     self._active_pages = 0
                     self._last_release = time.monotonic()
+                    if self._cfg.get('idle_timeout', 300) == 0:
+                        await self._close_browser()
 
     async def screenshot_url(self, url, *,
                              viewport=None,

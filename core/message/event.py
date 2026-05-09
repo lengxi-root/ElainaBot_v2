@@ -69,8 +69,8 @@ _EVENT_ID_TYPES = frozenset({INTERACTION_CREATE, GROUP_ADD_ROBOT, FRIEND_ADD})
 
 # 回复端点模板 (event_type -> lambda event: endpoint_str)
 _REPLY_ENDPOINTS = {
-    GROUP_AT_MESSAGE_CREATE: lambda e: f"/v2/groups/{e.group_id}/messages",
-    C2C_MESSAGE_CREATE:     lambda e: f"/v2/users/{e.user_id}/messages",
+    GROUP_AT_MESSAGE_CREATE: lambda e: f"/v2/groups/{e.group_openid or e.group_id}/messages",
+    C2C_MESSAGE_CREATE:     lambda e: f"/v2/users/{e.raw_user_id or e.user_id}/messages",
     AT_MESSAGE_CREATE:      lambda e: f"/channels/{e.channel_id}/messages",
     DIRECT_MESSAGE_CREATE:  lambda e: f"/dms/{e.guild_id}/messages",
     MESSAGE_CREATE:         lambda e: f"/channels/{e.channel_id}/messages",
@@ -244,28 +244,34 @@ class Event:
 
     def _fallback_msg_ep(self, strict=False):
         """group/user 消息端点 (strict: 仅在 is_group/is_direct 时返回)"""
-        if self.group_id and (not strict or self.is_group):
-            return f"/v2/groups/{self.group_id}/messages"
-        if self.user_id and (not strict or self.is_direct):
-            return f"/v2/users/{self.user_id}/messages"
+        gid = self.group_openid or self.group_id
+        uid = self.raw_user_id or self.user_id
+        if gid and (not strict or self.is_group):
+            return f"/v2/groups/{gid}/messages"
+        if uid and (not strict or self.is_direct):
+            return f"/v2/users/{uid}/messages"
         return ''
 
     @property
     def recall_endpoint(self):
-        if self.is_group and self.group_id:
-            return f"/v2/groups/{self.group_id}/messages/{{message_id}}"
-        if self.is_direct and self.user_id:
-            return f"/v2/users/{self.user_id}/messages/{{message_id}}"
+        gid = self.group_openid or self.group_id
+        uid = self.raw_user_id or self.user_id
+        if self.is_group and gid:
+            return f"/v2/groups/{gid}/messages/{{message_id}}"
+        if self.is_direct and uid:
+            return f"/v2/users/{uid}/messages/{{message_id}}"
         if self.channel_id:
             return f"/channels/{self.channel_id}/messages/{{message_id}}?hidetip=true"
         return ''
 
     @property
     def media_upload_endpoint(self):
-        if self.is_group and self.group_id:
-            return f"/v2/groups/{self.group_id}/files"
-        if self.user_id:
-            return f"/v2/users/{self.user_id}/files"
+        gid = self.group_openid or self.group_id
+        uid = self.raw_user_id or self.user_id
+        if self.is_group and gid:
+            return f"/v2/groups/{gid}/files"
+        if uid:
+            return f"/v2/users/{uid}/files"
         return ''
 
     @property

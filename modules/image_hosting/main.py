@@ -70,7 +70,7 @@ _NATURE_SECRET_KEY = _d(b'UFphTnhLV2ZjTHAzNHJQanJ1dGtXRnlaQ2N5REdCMGQ=').decode(
 _NATURE_BUCKET = 'sgame-data-service-1252931805'
 _NATURE_REGION = 'ap-nanjing'
 _NATURE_CDN = 'https://download.nature.qq.com'
-_NATURE_PATH_PREFIX = 'SnsShare/lengxi'
+_NATURE_PATH_PREFIX = 'SnsShare/SocialProfile'
 
 _DEFAULTS = {
     'cos': {
