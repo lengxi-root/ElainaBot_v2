@@ -5,7 +5,6 @@
 import os
 import json
 import time
-import shutil
 import logging
 import asyncio
 from datetime import datetime, timedelta
@@ -60,32 +59,6 @@ class BotManager(EventHandlerMixin):
     def _path(self, *parts):
         return os.path.join(self._base_dir, *parts)
 
-    def _cleanup_deprecated(self):
-        """启动时删除 web/deprecated_files.json 中列出的废弃文件"""
-        dep_file = self._path('web', 'deprecated_files.json')
-        if not os.path.isfile(dep_file):
-            return
-        try:
-            with open(dep_file, 'r', encoding='utf-8') as f:
-                entries = json.load(f)
-        except Exception:
-            return
-        if not isinstance(entries, list):
-            return
-        cache_dirs = set()
-        for rel in entries:
-            target = self._path(rel.replace('\\', '/'))
-            if os.path.isfile(target):
-                try:
-                    os.remove(target)
-                    log.info(f"已删除废弃文件: {rel}")
-                except Exception as e:
-                    log.warning(f"删除废弃文件失败 {rel}: {e}")
-            cache_dirs.add(os.path.join(os.path.dirname(target), '__pycache__'))
-        for cd in cache_dirs:
-            if os.path.isdir(cd):
-                shutil.rmtree(cd, ignore_errors=True)
-
     # ==================== 启动 ==
 
     async def start(self):
@@ -97,8 +70,6 @@ class BotManager(EventHandlerMixin):
         fw_name = cfg.get('settings', 'web.framework_name', 'ElainaBot')
         setup_logger(framework_name=fw_name)
         log.info(f"{'='*5} {fw_name} 启动中 {'='*5}")
-
-        self._cleanup_deprecated()
 
         bot_configs = cfg.get_bot_configs()
         valid_bots = [b for b in bot_configs if b.get('appid') and b.get('secret')]

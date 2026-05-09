@@ -16,10 +16,15 @@ sys.dont_write_bytecode = True
 
 
 def main():
+    import json, shutil, pathlib
     try:
-        from core.bot.manager import BotManager
-    except ImportError:
-        from core.bot import BotManager
+        for r in json.loads(pathlib.Path(_ROOT, 'web', 'deprecated_files.json').read_text('utf-8')):
+            t = pathlib.Path(_ROOT, r); t.unlink(missing_ok=True)
+            c = t.parent / '__pycache__'
+            if c.is_dir(): shutil.rmtree(c, ignore_errors=True)
+    except Exception:
+        pass
+    from core.bot.manager import BotManager
     manager = BotManager()
 
     if sys.platform == 'win32':
