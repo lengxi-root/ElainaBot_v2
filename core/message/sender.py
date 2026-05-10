@@ -516,7 +516,9 @@ class MessageSender:
         kb = payload.get('keyboard')
         if kb:
             try:
-                text += '\n[keyboard] ' + json.dumps(kb, ensure_ascii=False)
+                rows = kb.get('content', {}).get('rows', [])
+                labels = [b.get('render_data', {}).get('label', '?') for r in rows for b in r.get('buttons', [])]
+                text += '\n[keyboard] ' + ' | '.join(labels)
             except Exception:
                 pass
         user_id = getattr(event, 'user_id', '') or ''
