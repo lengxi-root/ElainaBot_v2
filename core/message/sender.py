@@ -364,8 +364,9 @@ class MessageSender:
                 payload['content'] = content
         elif use_md and msg_type != MSG_TYPE_TEXT:
             payload['msg_type'] = MSG_TYPE_MARKDOWN
+            md_content = str(content) if content is not None else ''
             suffix = cfg.get_bot_setting(self._appid, 'message.markdown_suffix', '')
-            payload['markdown'] = {'content': content + suffix if suffix else content}
+            payload['markdown'] = {'content': md_content + suffix if suffix else md_content}
         else:
             payload['msg_type'] = MSG_TYPE_TEXT
             payload['content'] = content or ''
@@ -533,10 +534,20 @@ class MessageSender:
                 })
             except Exception:
                 pass
+        raw_msg = json.dumps(payload, ensure_ascii=False, default=str)
         if self._reply_log_cb:
             try:
-                self._reply_log_cb(text, user_id, group_id,
-                                   json.dumps(payload, ensure_ascii=False, default=str))
+                self._reply_log_cb(text, user_id, group_id, raw_msg)
+            except Exception:
+                pass
+        elif self._log_service:
+            try:
+                asyncio.ensure_future(self._log_service.add('message', {
+                    'type': 'template',
+                    'user_id': user_id, 'group_id': group_id,
+                    'content': text, 'raw_message': raw_msg, 'direction': 'send',
+                    'plugin_name': self._reply_plugin_name or 'framework',
+                }))
             except Exception:
                 pass
 

@@ -94,13 +94,14 @@ class EventHandlerMixin:
 
         _t0 = time.time()
 
-        # 消息日志 + 用户追踪
-        if et in MESSAGE_TYPES:
+        # 消息日志 + 用户追踪 (消息事件和回调事件都记录)
+        if et in MESSAGE_TYPES or et == INTERACTION_CREATE:
             log_entry = {
                 'type': et, 'message_id': event.message_id or '',
                 'user_id': event.user_id or '', 'group_id': event.group_id or '',
                 'content': event.content or '',
                 'raw_message': json.dumps(event.raw, ensure_ascii=False),
+                'direction': 'receive',
             }
             bot.log_service.add_sync('message', log_entry)
             self._push_web_log('message', {

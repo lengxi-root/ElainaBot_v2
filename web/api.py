@@ -252,7 +252,6 @@ def _iter_bots(appid_filter=''):
     return list(_bot_manager._bots.items())
 
 
-_SEND_TYPES = frozenset(('plugin', 'onebot_send'))
 _LOG_SQL = "SELECT * FROM log ORDER BY timestamp DESC, id DESC LIMIT 50"
 
 
@@ -280,11 +279,8 @@ async def handle_recent_logs(request: web.Request):
     appid_filter = request.query.get('appid', '')
 
     def _tag_direction(r):
-        if r.get('type') in _SEND_TYPES:
+        if r.get('direction') == 'send':
             r['is_bot'] = True
-            r['direction'] = 'send'
-        else:
-            r['direction'] = 'receive'
 
     messages = _query_bot_logs('message', appid_filter, _tag_direction)
     lifecycle = _query_bot_logs('lifecycle', appid_filter)

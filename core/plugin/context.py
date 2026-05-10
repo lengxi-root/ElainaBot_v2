@@ -51,6 +51,6 @@ def _make_reply_log_cb(plugin_name, log_service):
                 'type': 'plugin',
                 'user_id': uid, 'group_id': gid,
                 'content': text, 'plugin_name': plugin_name,
-                'raw_message': raw_message,
+                'raw_message': raw_message, 'direction': 'send',
             }))
     return cb

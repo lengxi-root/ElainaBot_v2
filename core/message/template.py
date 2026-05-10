@@ -107,11 +107,12 @@ class TemplateEngine:
 
     @staticmethod
     def _pick_content(data, use_markdown):
-        """选取 markdown 或 text 或 content"""
+        """选取 markdown 或 text 或 content, 始终返回 str"""
         order = ('markdown', 'text', 'content') if use_markdown else ('text', 'content', 'markdown')
         for key in order:
             if key in data:
-                return data[key]
+                v = data[key]
+                return str(v) if v is not None else ''
         return ''
 
     @staticmethod
@@ -150,12 +151,12 @@ def _build_single_button(btn, variables):
 
     result = {'text': text}
 
-    # 类型判断: link -> type=0, data -> type=2
+    # 类型判断: link -> type=0, 显式 type 优先, 默认 type=2
     if 'link' in btn:
         result['type'] = 0
         result['data'] = btn['link']
     else:
-        result['type'] = 2
+        result['type'] = btn.get('type', 2)
         data = btn.get('data', text)
         if variables:
             try:

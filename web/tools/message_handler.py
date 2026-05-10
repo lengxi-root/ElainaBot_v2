@@ -193,7 +193,7 @@ async def handle_get_chat_history(request: web.Request):
         elif uid != chat_id or gid:
             continue
 
-        is_bot = msg_type in ('plugin', 'onebot_send') or (content.startswith(('[Bot回复]', '[Bot:')) if content else False)
+        is_bot = r.get('direction') == 'send'
 
         # 清理旧的 [Bot:xxx] 前缀
         if content.startswith('[Bot:'):
@@ -381,7 +381,7 @@ def _log_sent_message(bot, chat_type, chat_id, display, bot_appid, bot_name, bot
                 'group_id': group_id,
                 'content': display,
                 'plugin_name': 'WebPanel',
-                'raw_message': raw,
+                'raw_message': raw, 'direction': 'send',
             }))
     except Exception:
         pass

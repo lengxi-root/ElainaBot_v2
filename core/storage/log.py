@@ -44,7 +44,8 @@ _SCHEMAS = {
             group_id TEXT DEFAULT '',
             content TEXT DEFAULT '',
             raw_message TEXT DEFAULT '',
-            plugin_name TEXT DEFAULT ''
+            plugin_name TEXT DEFAULT '',
+            direction TEXT DEFAULT ''
         )
     """,
     'framework': """
@@ -129,7 +130,7 @@ _SCHEMAS = {
 
 # INSERT SQL
 _INSERTS = {
-    'message': "INSERT INTO log (timestamp, type, message_id, user_id, group_id, content, raw_message, plugin_name) VALUES (?,?,?,?,?,?,?,?)",
+    'message': "INSERT INTO log (timestamp, type, message_id, user_id, group_id, content, raw_message, plugin_name, direction) VALUES (?,?,?,?,?,?,?,?,?)",
     'framework': "INSERT INTO log (timestamp, content, level) VALUES (?,?,?)",
     'error': "INSERT INTO log (timestamp, appid, module_type, module_name, content, traceback, context) VALUES (?,?,?,?,?,?,?)",
     'lifecycle': "INSERT INTO log (timestamp, type, user_id, group_id, extra) VALUES (?,?,?,?,?)",
@@ -448,7 +449,7 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
             return (ts, data.get('type', ''), data.get('message_id', ''),
                     data.get('user_id', ''), data.get('group_id', ''),
                     data.get('content', ''), data.get('raw_message', ''),
-                    data.get('plugin_name', ''))
+                    data.get('plugin_name', ''), data.get('direction', ''))
         common = self._extract_common_row(log_type, data, ts)
         if common:
             return common
