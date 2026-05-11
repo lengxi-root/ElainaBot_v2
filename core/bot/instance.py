@@ -83,16 +83,16 @@ class BotInstance:
             base = self.sender._base_url
             url = f"{base}/users/@me"
             client = await self.token_manager._ensure_client()
-            async with client.get(url, headers={'Authorization': f'QQBot {token}'}) as resp:
-                if resp.status == 200:
-                    data = await resp.json(content_type=None)
-                    name = data.get('username', '')
-                    self.bot_id = data.get('id', '')
-                    self.avatar_url = data.get('avatar', '')
-                    if name:
-                        self.name = name
-                        get_logger(FRAMEWORK, name).info(f"机器人昵称: {name}")
-                        return
+            resp = await client.get(url, headers={'Authorization': f'QQBot {token}'})
+            if resp.status_code == 200:
+                data = resp.json()
+                name = data.get('username', '')
+                self.bot_id = data.get('id', '')
+                self.avatar_url = data.get('avatar', '')
+                if name:
+                    self.name = name
+                    get_logger(FRAMEWORK, name).info(f"机器人昵称: {name}")
+                    return
             get_logger(FRAMEWORK, self.appid).warning("获取机器人昵称失败, 使用 appid 代替")
         except Exception as e:
             get_logger(FRAMEWORK, self.appid).warning(f"获取机器人昵称异常: {e}, 使用 appid 代替")

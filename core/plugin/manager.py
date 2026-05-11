@@ -531,6 +531,10 @@ class PluginManager:
             if _dt > 3:
                 log.warning(f"[性能] 处理器 [{plugin_name}] 耗时 {_dt*1000:.0f}ms "
                             f"content={content[:50]}")
+            # 释放 event 持有的大对象, 加速 GC 回收
+            event.raw = None
+            event._sender = None
+            event._reply_log_cb = None
 
     # ==================== 日志服务 ====================
 

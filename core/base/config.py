@@ -142,7 +142,7 @@ class ConfigManager:
         self._path_cache[name] = p
         return p
 
-    def _maybe_reload(self, name):
+    def _maybe_reload(self, name, force_sync=False):
         now = time.monotonic()
         last = self._last_check.get(name, 0)
         if now - last < _CHECK_INTERVAL:
@@ -159,7 +159,16 @@ class ConfigManager:
         if old_mtime is not None and mtime <= old_mtime:
             return
 
-        # 需要加载
+        # 首次加载 / 强制同步: 直接加载; 后续变更: 后台线程加载, 不阻塞事件循环
+        if old_mtime is None or force_sync:
+            self._do_reload(name, filepath, mtime, is_first=(old_mtime is None))
+        else:
+            threading.Thread(target=self._do_reload,
+                             args=(name, filepath, mtime),
+                             daemon=True).start()
+
+    def _do_reload(self, name, filepath, mtime, is_first=False):
+        """实际加载配置文件 (可在后台线程执行)"""
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
@@ -176,7 +185,7 @@ class ConfigManager:
             self._bot_cfg_map.clear()
             self._bot_setting_cache.clear()
 
-        if old_mtime is not None:
+        if not is_first:
             logger.info(f"配置热加载: {name}")
             self._fire_callbacks(name, data)
 
@@ -212,7 +221,7 @@ class ConfigManager:
 
     def set_value(self, name, key, value):
         """设置配置值并写入文件"""
-        self._maybe_reload(name)
+        self._maybe_reload(name, force_sync=True)
         with self._rw_lock:
             data = self._cache.get(name, {})
             self._deep_set(data, key, value)
@@ -230,7 +239,7 @@ class ConfigManager:
                 self._mtimes[name] = time.time()
             logger.info(f"配置创建: {name}")
             return True
-        self._maybe_reload(name)
+        self._maybe_reload(name, force_sync=True)
         with self._rw_lock:
             current = self._cache.get(name, {})
         changed = self._merge_defaults(current, defaults)

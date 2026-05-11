@@ -33,7 +33,7 @@ class _EventDedup:
 
     def is_dup(self, *ids) -> bool:
         now = time.time()
-        if now > self._next_purge:
+        if now > self._next_purge or len(self._seen) > 5000:
             self._seen = {k: v for k, v in self._seen.items() if v > now}
             self._next_purge = now + 60
         for eid in ids:
@@ -115,9 +115,12 @@ class EventHandlerMixin:
             }
             bot.log_service.add_sync('message', log_entry)
             self._push_web_log('message', {
-                **log_entry, 'appid': appid, 'bot_name': bot.name,
+                'type': et, 'message_id': event.message_id or '',
+                'user_id': event.user_id or '', 'group_id': event.group_id or '',
+                'content': event.content or '', 'direction': 'receive',
+                'appid': appid, 'bot_name': bot.name,
                 'bot_qq': getattr(bot, 'robot_qq', '') or '',
-                'event_type': et, 'direction': 'receive',
+                'event_type': et,
             })
             if event.user_id:
                 asyncio.create_task(self._track_user(bot, event, appid))
@@ -219,6 +222,10 @@ class EventHandlerMixin:
         if now - self._cache_clean_ts > 600:
             self._cache_clean_ts = now
             self._known_users = {k: v for k, v in self._known_users.items() if v > now}
+            # 清理过期群缓存 (expire_ts < now), 避免不活跃群的 user_map 一直占用内存
+            self._group_users_cache = {
+                k: v for k, v in self._group_users_cache.items() if v[0] > now
+            }
 
         if username:
             bot.log_service.db_queue(

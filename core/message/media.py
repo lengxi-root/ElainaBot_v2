@@ -10,7 +10,6 @@ import base64
 import hashlib
 import asyncio
 import tempfile
-import aiohttp
 
 from core.base.logger import get_logger, FRAMEWORK
 
@@ -135,12 +134,12 @@ async def chunked_upload(sender, file_path, file_type, endpoint, *, file_name=No
 
         for retry in range(3):
             try:
-                async with sender._client.put(
-                    part['presigned_url'], data=chunk,
+                resp = await sender._client.put(
+                    part['presigned_url'], content=chunk,
                     headers={'Content-Length': str(len(chunk))},
-                    timeout=aiohttp.ClientTimeout(total=300)) as resp:
-                    if resp.status >= 400:
-                        raise Exception(f"PUT {resp.status}")
+                    timeout=300.0)
+                if resp.status_code >= 400:
+                    raise Exception(f"PUT {resp.status_code}")
                 break
             except Exception:
                 if retry >= 2:
@@ -214,8 +213,8 @@ async def get_image_size(client, image_input):
                 return _img_size(img)
         # URL → 下载头部
         if isinstance(image_input, str):
-            async with client.get(image_input, headers={'Range': 'bytes=0-65535'}) as resp:
-                image_input = await resp.read()
+            resp = await client.get(image_input, headers={'Range': 'bytes=0-65535'})
+            image_input = resp.content
         # bytes → 解析
         if isinstance(image_input, bytes):
             with Image.open(io.BytesIO(image_input)) as img:

@@ -35,6 +35,25 @@ DAILY_TYPES = frozenset({'message', 'framework', 'error', 'lifecycle'})
 STATIC_TYPES = frozenset({'data', 'dau', 'share', 'wakeup'})
 ALL_TYPES = DAILY_TYPES | STATIC_TYPES
 
+# DAU 表结构 (公开常量, dau.py 复用)
+DAU_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT UNIQUE NOT NULL,
+        active_users INTEGER DEFAULT 0,
+        active_groups INTEGER DEFAULT 0,
+        total_messages INTEGER DEFAULT 0,
+        private_messages INTEGER DEFAULT 0,
+        group_join_count INTEGER DEFAULT 0,
+        group_leave_count INTEGER DEFAULT 0,
+        friend_add_count INTEGER DEFAULT 0,
+        friend_remove_count INTEGER DEFAULT 0,
+        message_stats_detail TEXT DEFAULT '',
+        user_stats_detail TEXT DEFAULT '',
+        command_stats_detail TEXT DEFAULT ''
+    )
+"""
+
 # 表结构 (类型 -> CREATE TABLE SQL)
 _SCHEMAS = {
     'message': """
@@ -71,23 +90,7 @@ _SCHEMAS = {
             context TEXT DEFAULT ''
         )
     """,
-    'dau': """
-        CREATE TABLE IF NOT EXISTS log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            date TEXT UNIQUE NOT NULL,
-            active_users INTEGER DEFAULT 0,
-            active_groups INTEGER DEFAULT 0,
-            total_messages INTEGER DEFAULT 0,
-            private_messages INTEGER DEFAULT 0,
-            group_join_count INTEGER DEFAULT 0,
-            group_leave_count INTEGER DEFAULT 0,
-            friend_add_count INTEGER DEFAULT 0,
-            friend_remove_count INTEGER DEFAULT 0,
-            message_stats_detail TEXT DEFAULT '',
-            user_stats_detail TEXT DEFAULT '',
-            command_stats_detail TEXT DEFAULT ''
-        )
-    """,
+    'dau': DAU_TABLE_SQL,
     'share': """
         CREATE TABLE IF NOT EXISTS log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -396,6 +399,30 @@ class _BaseLogService:
         if removed:
             log.info(f"[{self._log_tag}] 已清理 {removed} 个过期日志目录")
 
+    def _close_stale_conns(self):
+        """关闭非当天 daily 日志的数据库连接, 释放资源"""
+        today = datetime.now().strftime('%Y-%m-%d')
+        to_close = []
+        for db_path in list(self._conns):
+            parent = os.path.basename(os.path.dirname(db_path))
+            if len(parent) == 10 and parent != today:
+                try:
+                    datetime.strptime(parent, '%Y-%m-%d')
+                    to_close.append(db_path)
+                except ValueError:
+                    continue
+        for db_path in to_close:
+            conn = self._conns.pop(db_path, None)
+            self._conn_locks.pop(db_path, None)
+            self._initialized.discard(db_path)
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        if to_close:
+            log.debug(f"[{self._log_tag}] 已关闭 {len(to_close)} 个过期 daily 连接")
+
     async def _periodic_cleanup(self):
         while not self._stop.is_set():
             try:
@@ -409,6 +436,7 @@ class _BaseLogService:
                 except asyncio.TimeoutError:
                     pass
                 await self._cleanup_expired()
+                self._close_stale_conns()
             except asyncio.CancelledError:
                 break
             except Exception as e:

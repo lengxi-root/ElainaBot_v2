@@ -4,8 +4,6 @@
 
 import json
 import asyncio
-import ssl
-import aiohttp
 import websockets
 from core.base.logger import get_logger, SERVICE
 from core.message.event import Event
@@ -49,11 +47,6 @@ class WSClient:
         self._reconnect_count = 0
         self._gateway_url = None
 
-        # 复用 SSL 上下文
-        self._ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        self._ssl_ctx.check_hostname = False
-        self._ssl_ctx.verify_mode = ssl.CERT_NONE
-
     async def connect(self):
         """连接并开始接收事件"""
         self._closed = False
@@ -61,7 +54,7 @@ class WSClient:
             try:
                 url = await self._get_gateway_url()
                 log.info(f"[{self._appid}] 正在连接 WebSocket: {url}")
-                _ssl = self._ssl_ctx if url.startswith('wss://') else None
+                _ssl = None
                 async with websockets.connect(url, ssl=_ssl) as ws:
                     self._ws = ws
                     self._reconnect_count = 0
@@ -203,12 +196,12 @@ class WSClient:
         url = f"{self._custom_api_base}/gateway/bot" if self._custom_api_base else _GATEWAY_URL
         token = await self._tm.get_token()
         client = await self._tm._ensure_client()
-        async with client.get(url, headers={'Authorization': f"QQBot {token}"}) as resp:
-            data = await resp.json(content_type=None)
-            self._gateway_url = data.get('url', '')
-            if not self._gateway_url:
-                raise RuntimeError(f"获取网关失败: {data}")
-            return self._gateway_url
+        resp = await client.get(url, headers={'Authorization': f"QQBot {token}"})
+        data = resp.json()
+        self._gateway_url = data.get('url', '')
+        if not self._gateway_url:
+            raise RuntimeError(f"获取网关失败: {data}")
+        return self._gateway_url
 
     @staticmethod
     def _get_intents():

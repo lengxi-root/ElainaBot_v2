@@ -17,9 +17,8 @@ import time
 import random
 import asyncio
 import hashlib
-import ssl
 from datetime import datetime
-import aiohttp
+from core.network.http_compat import AsyncHttpClient, HAS_HTTPX
 from core.base.logger import get_logger, FRAMEWORK, report_error, report_error_raw
 from core.base.config import cfg
 from core.message.template import tpl
@@ -53,16 +52,13 @@ def _msg_seq():
 class MessageSender:
     """消息发送器 (每个机器人实例一个)"""
 
-    __slots__ = ('_token_mgr', '_appid', '_client', '_base_url', '_ssl_ctx', '_web_log_cb', '_bot_name', '_bot_qq', '_log_service', '_reply_log_cb', '_reply_plugin_name', '_custom_api_base', '_media_dir')
+    __slots__ = ('_token_mgr', '_appid', '_client', '_base_url', '_web_log_cb', '_bot_name', '_bot_qq', '_log_service', '_reply_log_cb', '_reply_plugin_name', '_custom_api_base', '_media_dir')
 
     def __init__(self, token_manager, custom_api_base=''):
         self._token_mgr = token_manager
         self._appid = token_manager.appid
         self._custom_api_base = custom_api_base.rstrip('/') if custom_api_base else ''
         self._base_url = self._custom_api_base or _API_BASE
-        self._ssl_ctx = ssl.create_default_context()
-        self._ssl_ctx.check_hostname = False
-        self._ssl_ctx.verify_mode = ssl.CERT_NONE
         self._client = None  # 延迟创建
         self._web_log_cb = None  # 由 BotManager 注入
         self._bot_name = ''     # 由 BotInstance 设置
@@ -73,50 +69,47 @@ class MessageSender:
         self._media_dir = ''         # 由 BotManager 注入, data/media 绝对路径
 
     async def _ensure_client(self):
-        if self._client is None or self._client.closed:
-            timeout = aiohttp.ClientTimeout(total=30)
-            conn = aiohttp.TCPConnector(
-                ssl=self._ssl_ctx, limit=100, limit_per_host=50,
-                use_dns_cache=True, ttl_dns_cache=600,
-                keepalive_timeout=30)
-            self._client = aiohttp.ClientSession(
-                base_url=self._base_url, timeout=timeout, connector=conn)
+        if self._client is None or self._client.is_closed:
+            self._client = AsyncHttpClient(
+                base_url=self._base_url, timeout=30.0)
+            log.info(f"[{self._appid}] HTTP客户端: {'httpx' if HAS_HTTPX else 'aiohttp'}")
         return self._client
 
     async def close(self):
-        if self._client and not self._client.closed:
-            await self._client.close()
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
 
     # ==================== HTTP ====================
 
     async def _request(self, method, endpoint, **kwargs):
         client = await self._ensure_client()
+        extra_headers = kwargs.pop('headers', None)
         for attempt in range(2):
             token = await self._token_mgr.get_token()
-            headers = kwargs.pop('headers', {})
+            headers = dict(extra_headers) if extra_headers else {}
             headers['Authorization'] = f"QQBot {token}"
             if 'json' in kwargs:
                 headers.setdefault('Content-Type', 'application/json')
             try:
                 _t = time.time()
-                async with client.request(method, endpoint, headers=headers, **kwargs) as resp:
-                    body = await resp.read()
-                    _dt = time.time() - _t
-                    if _dt > 1:
-                        log.warning(f"[{self._appid}] API 慢请求 {_dt*1000:.0f}ms {method} {endpoint}")
-                    if resp.status >= 400:
-                        try:
-                            err = json.loads(body)
-                        except Exception:
-                            err = {'message': body.decode(errors='replace'), 'code': resp.status}
-                        if err.get('code') == _TOKEN_EXPIRED_CODE and attempt == 0:
-                            await self._token_mgr.refresh_token()
-                            await asyncio.sleep(0.1)
-                            continue
-                        return False, err
-                    if body:
-                        return True, json.loads(body)
-                    return True, {}
+                resp = await client.request(method, endpoint, headers=headers, **kwargs)
+                body = resp.content
+                _dt = (time.time() - _t) * 1000
+                if _dt > 1500:
+                    log.warning(f"[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {resp.status_code}")
+                if resp.status_code >= 400:
+                    try:
+                        err = json.loads(body)
+                    except Exception:
+                        err = {'message': body.decode(errors='replace'), 'code': resp.status_code}
+                    if err.get('code') == _TOKEN_EXPIRED_CODE and attempt == 0:
+                        await self._token_mgr.refresh_token()
+                        await asyncio.sleep(0.1)
+                        continue
+                    return False, err
+                if body:
+                    return True, json.loads(body)
+                return True, {}
             except Exception as e:
                 return False, {'message': str(e), 'code': -1}
         return False, {'message': 'max retries', 'code': -1}
@@ -403,14 +396,15 @@ class MessageSender:
         if is_url:
             try:
                 client = await self._ensure_client()
-                async with client.get(data) as resp:
-                    if resp.content_length and resp.content_length > _MAX_MEDIA_DOWNLOAD:
-                        log.warning(f"[{self._appid}] 媒体过大 ({resp.content_length} bytes), 跳过")
-                        return None
-                    data = await resp.content.read(_MAX_MEDIA_DOWNLOAD + 1)
-                    if len(data) > _MAX_MEDIA_DOWNLOAD:
-                        log.warning(f"[{self._appid}] 媒体超过 {_MAX_MEDIA_DOWNLOAD} bytes, 跳过")
-                        return None
+                resp = await client.get(data)
+                cl = int(resp.headers.get('content-length', 0))
+                if cl > _MAX_MEDIA_DOWNLOAD:
+                    log.warning(f"[{self._appid}] 媒体过大 ({cl} bytes), 跳过")
+                    return None
+                data = resp.content
+                if len(data) > _MAX_MEDIA_DOWNLOAD:
+                    log.warning(f"[{self._appid}] 媒体超过 {_MAX_MEDIA_DOWNLOAD} bytes, 跳过")
+                    return None
             except Exception as e:
                 log.warning(f"[{self._appid}] 下载媒体失败: {e}")
                 return None

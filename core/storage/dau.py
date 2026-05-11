@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timedelta
 from core.base.config import cfg as app_cfg
 from core.base.logger import get_logger, FRAMEWORK
+from core.storage.log import DAU_TABLE_SQL
 
 log = get_logger(FRAMEWORK, "DAU统计")
 
@@ -235,23 +236,7 @@ class DAUService:
         os.makedirs(os.path.dirname(dau_path), exist_ok=True)
         conn = sqlite3.connect(dau_path, timeout=10)
         try:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT UNIQUE NOT NULL,
-                    active_users INTEGER DEFAULT 0,
-                    active_groups INTEGER DEFAULT 0,
-                    total_messages INTEGER DEFAULT 0,
-                    private_messages INTEGER DEFAULT 0,
-                    group_join_count INTEGER DEFAULT 0,
-                    group_leave_count INTEGER DEFAULT 0,
-                    friend_add_count INTEGER DEFAULT 0,
-                    friend_remove_count INTEGER DEFAULT 0,
-                    message_stats_detail TEXT DEFAULT '',
-                    user_stats_detail TEXT DEFAULT '',
-                    command_stats_detail TEXT DEFAULT ''
-                )
-            """)
+            conn.execute(DAU_TABLE_SQL)
             conn.execute("""
                 INSERT INTO log (date, active_users, active_groups, total_messages,
                                  private_messages, group_join_count, group_leave_count,
