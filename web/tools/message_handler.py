@@ -17,7 +17,8 @@ _bot_manager = None
 
 # 聊天列表短期缓存 (避免多次刷新同一详情重复诡汇总查询)
 _chat_list_cache = {}  # {(chat_type, appid_filter): (timestamp, chats)}
-_CHAT_LIST_TTL = 5  # 秒
+_CHAT_LIST_TTL = 30  # 秒
+_chat_list_lock = None  # asyncio.Lock, 延迟初始化
 
 
 def set_context(base_dir: str, bot_manager=None):
@@ -142,6 +143,45 @@ def _query_chat_messages_sync(chat_type, chat_id, appid_filter, days=3, limit=30
     return results[-limit:]
 
 
+def _query_older_messages_sync(chat_type, chat_id, appid_filter, before_date_str, limit=300, max_days=14):
+    """从 before_date 前一天开始往前搜索, 找到第一个有消息的日期即返回"""
+    if not _bot_manager:
+        return [], '', False
+    try:
+        bd = datetime.strptime(before_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        return [], '', False
+
+    if chat_type == 'group':
+        where = "group_id = ?"
+        params = (chat_id,)
+    else:
+        where = "user_id = ? AND (group_id = '' OR group_id = 'c2c')"
+        params = (chat_id,)
+    sql = f"SELECT * FROM log WHERE {where} ORDER BY id DESC LIMIT {limit}"
+
+    for offset in range(1, max_days + 1):
+        d = (bd - timedelta(days=offset)).strftime('%Y-%m-%d')
+        results = []
+        for appid, inst in _iter_bots(appid_filter):
+            bot_qq = getattr(inst, 'robot_qq', '') or ''
+            bot_name = getattr(inst, 'name', appid)
+            try:
+                rows = inst.log_service.query('message', sql, params, date=d)
+                for r in rows:
+                    r['appid'] = appid
+                    r['bot_name'] = bot_name
+                    r['bot_qq'] = bot_qq
+                    r['_date'] = d
+                results.extend(rows)
+            except Exception:
+                pass
+        if results:
+            results.sort(key=lambda r: r.get('id', 0))
+            return results[-limit:], d, True
+    return [], '', False
+
+
 def _aggregate_chats_sync(chat_type, appid_filter, days=3):
     """SQL 聚合聊天列表 — 避免下载几千条诡代反检柒"""
     if not _bot_manager:
@@ -248,26 +288,35 @@ async def handle_get_chats(request: web.Request):
     page = max(int(body.get('page', 1)), 1)
     page_size = min(int(body.get('page_size', 50)), 100)
 
+    global _chat_list_lock
+    if _chat_list_lock is None:
+        _chat_list_lock = asyncio.Lock()
+
     cache_key = (chat_type, appid_filter)
     now = time.time()
     cached = _chat_list_cache.get(cache_key)
     if cached and now - cached[0] < _CHAT_LIST_TTL:
         chats = cached[1]
     else:
-        loop = asyncio.get_event_loop()
-        chats = await loop.run_in_executor(None, _aggregate_chats_sync, chat_type, appid_filter, 3)
-        # 批量填昵称 (仅私聊)
-        if chat_type == 'user':
-            ids = [c['chat_id'] for c in chats]
-            nicks = await loop.run_in_executor(None, _batch_get_nicknames, ids)
-            for c in chats:
-                c['nickname'] = nicks.get(c['chat_id'], f"用户{c['chat_id'][-6:]}")
-                c['avatar'] = (c['nickname'] or '?')[0].upper()
-        else:
-            for c in chats:
-                c['nickname'] = f"群{c['chat_id'][-6:]}"
-                c['avatar'] = c['chat_id'][0].upper() if c['chat_id'] else '?'
-        _chat_list_cache[cache_key] = (now, chats)
+        async with _chat_list_lock:
+            # 二次检查: 等锁期间可能已被另一个请求刷新
+            cached = _chat_list_cache.get(cache_key)
+            if cached and time.time() - cached[0] < _CHAT_LIST_TTL:
+                chats = cached[1]
+            else:
+                loop = asyncio.get_event_loop()
+                chats = await loop.run_in_executor(None, _aggregate_chats_sync, chat_type, appid_filter, 1)
+                if chat_type == 'user':
+                    ids = [c['chat_id'] for c in chats]
+                    nicks = await loop.run_in_executor(None, _batch_get_nicknames, ids)
+                    for c in chats:
+                        c['nickname'] = nicks.get(c['chat_id'], f"用户{c['chat_id'][-6:]}")
+                        c['avatar'] = (c['nickname'] or '?')[0].upper()
+                else:
+                    for c in chats:
+                        c['nickname'] = f"群{c['chat_id'][-6:]}"
+                        c['avatar'] = c['chat_id'][0].upper() if c['chat_id'] else '?'
+                _chat_list_cache[cache_key] = (time.time(), chats)
 
     if search:
         chats = [c for c in chats if search in c['chat_id'].lower() or search in c.get('nickname', '').lower()]
@@ -282,7 +331,11 @@ async def handle_get_chats(request: web.Request):
 
 
 async def handle_get_chat_history(request: web.Request):
-    """获取聊天记录 — SQL WHERE 下推 + 批量昵称"""
+    """获取聊天记录 — 支持按日期分页加载
+
+    before_date: 可选, YYYY-MM-DD, 加载该日期之前的消息 (往前搜索到有数据为止)
+    不传则加载今天的消息
+    """
     try:
         body = await request.json()
     except Exception:
@@ -290,13 +343,21 @@ async def handle_get_chat_history(request: web.Request):
     chat_type = body.get('chat_type', 'group')
     chat_id = body.get('chat_id', '')
     appid_filter = body.get('appid', '')
+    before_date = body.get('before_date', '')
 
     if not chat_id:
-        return web.json_response({'success': True, 'data': {'messages': []}})
+        return web.json_response({'success': True, 'data': {'messages': [], 'has_more': False}})
 
     loop = asyncio.get_event_loop()
-    rows = await loop.run_in_executor(
-        None, _query_chat_messages_sync, chat_type, chat_id, appid_filter, 3, 300)
+
+    if before_date:
+        rows, oldest_date, has_more = await loop.run_in_executor(
+            None, _query_older_messages_sync, chat_type, chat_id, appid_filter, before_date, 300, 14)
+    else:
+        rows = await loop.run_in_executor(
+            None, _query_chat_messages_sync, chat_type, chat_id, appid_filter, 1, 300)
+        oldest_date = _date.today().strftime('%Y-%m-%d')
+        has_more = True
 
     # 收集需要查询的 user_id (仅非bot消息), 批量取昵称
     uid_set = set()
@@ -314,7 +375,6 @@ async def handle_get_chat_history(request: web.Request):
         msg_type = r.get('type', '')
         is_bot = r.get('direction') == 'send'
 
-        # 清理旧的 [Bot:xxx] 前缀
         if content.startswith('[Bot:'):
             idx = content.find('] ')
             if idx > 0:
@@ -336,19 +396,21 @@ async def handle_get_chat_history(request: web.Request):
             'source': source,
         })
 
-    # 取最近一条非 bot 消息的 message_id 用于发送回复 (仅当天)
+    # 取最近一条非 bot 消息的 message_id 用于发送回复 (仅初始加载)
     last_msg_id = ''
-    today_str = _date.today().strftime('%Y-%m-%d')
-    for r in reversed(rows):
-        if r.get('_date', '') != today_str:
-            continue
-        mid = r.get('message_id', '')
-        if mid and r.get('type') != 'plugin' and r.get('direction') != 'send':
-            last_msg_id = mid
-            break
+    if not before_date:
+        today_str = _date.today().strftime('%Y-%m-%d')
+        for r in reversed(rows):
+            if r.get('_date', '') != today_str:
+                continue
+            mid = r.get('message_id', '')
+            if mid and r.get('type') != 'plugin' and r.get('direction') != 'send':
+                last_msg_id = mid
+                break
 
     return web.json_response({'success': True, 'data': {
         'messages': messages, 'last_msg_id': last_msg_id,
+        'oldest_date': oldest_date, 'has_more': has_more,
     }})
 
 
