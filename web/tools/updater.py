@@ -408,9 +408,26 @@ class FrameworkUpdater:
             ts = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_file = backup_dir / f"backup_{self.current_version}_{ts}.zip"
 
-            skip_prefixes = ('plugins', 'modules', 'data/backup', 'data/temp_update',
-                             'data\\backup', 'data\\temp_update')
+            # 读取日志目录名 (默认 'log')
+            try:
+                import yaml
+                with open(self.base_dir / 'config' / 'settings.yaml', encoding='utf-8') as f:
+                    _s = yaml.safe_load(f) or {}
+                log_dir_name = (_s.get('logging') or {}).get('dir', 'log')
+            except Exception:
+                log_dir_name = 'log'
+            log_prefix = f'data/{log_dir_name}'
+            log_prefix_win = f'data\\{log_dir_name}'
+
+            skip_prefixes = ('plugins', 'modules',
+                             'data/backup', 'data/temp_update',
+                             'data/media', 'data\\backup',
+                             'data\\temp_update', 'data\\media',
+                             log_prefix, log_prefix_win)
             skip_contains = ('.git', '__pycache__', 'node_modules')
+
+            # 日志目录中仅备份的文件 (每个 appid 子目录下的)
+            log_keep_names = frozenset({'data.db', 'dau.db'})
 
             with zipfile.ZipFile(backup_file, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for root, dirs, files in os.walk(self.base_dir):
@@ -425,6 +442,17 @@ class FrameworkUpdater:
                         fp = os.path.join(root, fname)
                         if not any(s in fp for s in skip_contains):
                             zf.write(fp, os.path.relpath(fp, self.base_dir))
+
+                # 单独收集日志目录中的 data.db / dau.db
+                log_abs = self.base_dir / 'data' / log_dir_name
+                if log_abs.is_dir():
+                    for appid_dir in log_abs.iterdir():
+                        if not appid_dir.is_dir():
+                            continue
+                        for db_name in log_keep_names:
+                            db_file = appid_dir / db_name
+                            if db_file.is_file():
+                                zf.write(str(db_file), os.path.relpath(str(db_file), self.base_dir))
 
             return str(backup_file)
         except Exception as e:
