@@ -225,10 +225,10 @@ class MessageSender:
         payload = self._build_core_payload(content, buttons, media, msg_type, **kwargs)
         ok, data = await self.post_json(endpoint, payload)
         if ok:
-            self._log_push(endpoint, payload, content)
+            self._log_push(endpoint, payload, content, data)
         return ok, data, payload
 
-    def _log_push(self, endpoint, payload, content):
+    def _log_push(self, endpoint, payload, content, resp_data=None):
         """主动推送成功后的日志记录"""
         parts = endpoint.strip('/').split('/')
         group_id = user_id = ''
@@ -239,7 +239,10 @@ class MessageSender:
                 user_id = parts[2]
         text = self._extract_log_text(payload, content)
         raw_msg = json.dumps(payload, ensure_ascii=False, default=str)
-        self._emit_log(text, user_id, group_id, raw_msg, 'proactive')
+        msg_id = ''
+        if isinstance(resp_data, dict):
+            msg_id = resp_data.get('id') or resp_data.get('msg_id') or ''
+        self._emit_log(text, user_id, group_id, raw_msg, 'proactive', message_id=msg_id)
 
     async def send_to_channel(self, channel_id, content=None, *, msg_id=None,
                               buttons=None, **kwargs):
@@ -375,7 +378,7 @@ class MessageSender:
                 pass
         return text
 
-    def _emit_log(self, text, user_id, group_id, raw_msg, log_type='proactive', plugin_name=''):
+    def _emit_log(self, text, user_id, group_id, raw_msg, log_type='proactive', plugin_name='', message_id=''):
         """推送到 Web 面板 + 持久化到数据库"""
         if self._web_log_cb:
             try:
@@ -386,6 +389,7 @@ class MessageSender:
                     'user_id': user_id, 'group_id': group_id,
                     'content': text, 'is_bot': True,
                     'direction': 'send',
+                    'message_id': message_id,
                     'plugin_name': plugin_name or log_type,
                 })
             except Exception:
@@ -394,6 +398,7 @@ class MessageSender:
             try:
                 asyncio.ensure_future(self._log_service.add('message', {
                     'type': log_type,
+                    'message_id': message_id,
                     'user_id': user_id, 'group_id': group_id,
                     'content': text, 'raw_message': raw_msg, 'direction': 'send',
                     'plugin_name': plugin_name or log_type,
@@ -571,7 +576,7 @@ class MessageSender:
             )
             return False, data
 
-        self._log_sent(payload, event, content, media_label)
+        self._log_sent(payload, event, content, media_label, data)
 
         # after_send hook (广播)
         if hooks.has('after_send'):
@@ -581,7 +586,7 @@ class MessageSender:
             })
         return True, data
 
-    def _log_sent(self, payload, event, content, media_label=''):
+    def _log_sent(self, payload, event, content, media_label='', resp_data=None):
         """发送成功后的日志记录 (Web面板 + 持久化)"""
         reply_log_cb = getattr(event, '_reply_log_cb', None) or self._reply_log_cb
         plugin_name = getattr(event, '_reply_plugin_name', '') or self._reply_plugin_name
@@ -589,13 +594,16 @@ class MessageSender:
         user_id = getattr(event, 'user_id', '') or ''
         group_id = getattr(event, 'group_id', '') or ''
         raw_msg = json.dumps(payload, ensure_ascii=False, default=str)
+        msg_id = ''
+        if isinstance(resp_data, dict):
+            msg_id = resp_data.get('id') or resp_data.get('msg_id') or ''
         if reply_log_cb:
             try:
-                reply_log_cb(text, user_id, group_id, raw_msg)
+                reply_log_cb(text, user_id, group_id, raw_msg, msg_id)
             except Exception:
                 pass
         else:
-            self._emit_log(text, user_id, group_id, raw_msg, 'template', plugin_name or 'framework')
+            self._emit_log(text, user_id, group_id, raw_msg, 'template', plugin_name or 'framework', message_id=msg_id)
 
     async def _auto_recall(self, event, message_id, delay):
         try:
