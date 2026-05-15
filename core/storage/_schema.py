@@ -122,6 +122,10 @@ _SCHEMAS = {
             group_id TEXT PRIMARY KEY,
             users TEXT DEFAULT '[]'
         );
+        CREATE TABLE IF NOT EXISTS full_access_groups (
+            group_id TEXT PRIMARY KEY,
+            first_seen TEXT DEFAULT ''
+        );
     """,
 }
 
@@ -165,7 +169,6 @@ _DATA_MIGRATIONS = [
     ('users', 'state', 'INTEGER DEFAULT 0'),
 ]
 
-
 def _migrate_data_tables(conn):
     """为 data 库的旧表补齐缺失列"""
     for table, col, col_def in _DATA_MIGRATIONS:
@@ -178,6 +181,8 @@ def _migrate_data_tables(conn):
             log.info(f"自动迁移: {table} 表新增列 {col}")
         except Exception as e:
             log.warning(f"迁移列 {table}.{col} 失败: {e}")
+    try: conn.execute("ALTER TABLE full_access_groups DROP COLUMN last_seen"); conn.commit()
+    except Exception: pass
 
 
 def _migrate_missing_columns(conn, log_type):

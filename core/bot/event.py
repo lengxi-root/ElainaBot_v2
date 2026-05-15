@@ -11,6 +11,7 @@ from core.base.config import cfg
 from core.base.logger import get_logger, FRAMEWORK, report_error
 from core.message.event import (
     GROUP_ADD_ROBOT, GROUP_DEL_ROBOT, FRIEND_ADD, FRIEND_DEL,
+    GROUP_MESSAGE_CREATE,
     MESSAGE_TYPES, LIFECYCLE_TYPES, INTERACTION_CREATE,
 )
 from core.message.parsers import swap_ids
@@ -20,6 +21,7 @@ log = get_logger(FRAMEWORK, "事件处理")
 _USER_CACHE_TTL = 3600
 _DEDUP_TTL = 300
 _GROUP_CACHE_MAX = 10000
+_FULL_ACCESS_CACHE_TTL = 1800
 def _new_user_entry(uid, today):
     return {'userid': uid, 'value': 1, 'last_active': today}
 
@@ -54,6 +56,7 @@ class EventHandlerMixin:
         self._known_users = {}
         self._cache_clean_ts = 0
         self._group_users_cache = {}
+        self._full_access_cache = {}  # {group_id: expire_ts}
 
     # ==================== 事件入口 ====================
 
@@ -126,6 +129,10 @@ class EventHandlerMixin:
             if event.user_id:
                 asyncio.create_task(self._track_user(bot, event, appid))
 
+        # 全量群记录
+        if et == GROUP_MESSAGE_CREATE and event.group_id:
+            self._record_full_access_group(bot, event.group_id)
+
         # 插件分发
         if not self._plugin_manager:
             return
@@ -147,6 +154,29 @@ class EventHandlerMixin:
             self._push_web_log('framework', {
                 'appid': appid, 'source': '性能', 'content': msg,
             })
+
+    # ==================== 全量群记录 ====================
+
+    def _record_full_access_group(self, bot, group_id):
+        """记录全量群到 data.db, 内存缓存 30 分钟"""
+        now = time.time()
+        expire = self._full_access_cache.get(group_id)
+        if expire and now < expire:
+            return
+        self._full_access_cache[group_id] = now + _FULL_ACCESS_CACHE_TTL
+        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        bot.log_service.db_queue(
+            "INSERT OR IGNORE INTO full_access_groups (group_id, first_seen) VALUES (?, ?)",
+            (group_id, ts))
+
+    def get_full_access_groups(self):
+        """从 data.db 拉取所有全量群记录"""
+        bot = next(iter(self._bots.values()), None)
+        if not bot:
+            return []
+        rows = bot.log_service.query_data(
+            "SELECT group_id FROM full_access_groups ORDER BY first_seen DESC")
+        return rows
 
     # ==================== 生命周期 ====================
 

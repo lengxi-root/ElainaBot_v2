@@ -39,7 +39,6 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
             LogService._global_callbacks_registered = True
             on_error(LogService._global_error_dispatch)
         await self._start_tasks()
-        log.info(f"[{self._appid}] 日志服务已启动 (SQLite, WAL={self._wal})")
 
     async def shutdown(self):
         """关闭日志服务, 刷写缓冲"""
@@ -245,7 +244,6 @@ class SharedLogService(_BaseLogService):
     async def start(self):
         SharedLogService._instance = self
         await self._start_tasks()
-        log.info(f"[通用日志] 已启动 (目录: {self._base_dir})")
 
     async def shutdown(self):
         SharedLogService._instance = None

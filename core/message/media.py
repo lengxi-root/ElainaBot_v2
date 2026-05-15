@@ -20,15 +20,24 @@ CHUNK_THRESHOLD = 5 * 1024 * 1024  # 5MB
 
 async def upload_media_bytes(sender, file_bytes, file_type, endpoint, *, file_name=None):
     """上传媒体 bytes, 返回 file_info (>5MB 自动分片)"""
-    if not isinstance(file_bytes, bytes):
+    if not isinstance(file_bytes, bytes) or not file_bytes:
         return None
-    # 大文件走分片
+    # 大文件走分片 (带重试)
     if len(file_bytes) > CHUNK_THRESHOLD:
-        try:
-            return await _chunked_upload_from_bytes(sender, file_bytes, file_type, endpoint,
-                                                    file_name=file_name)
-        except Exception as e:
-            log.warning(f"[{sender._appid}] 分片上传失败, 回退普通上传: {e}")
+        last_err = None
+        for retry in range(3):
+            try:
+                result = await _chunked_upload_from_bytes(sender, file_bytes, file_type, endpoint,
+                                                          file_name=file_name)
+                if result:
+                    return result
+            except Exception as e:
+                last_err = e
+                log.warning(f"[{sender._appid}] 分片上传第{retry+1}次失败: {e}")
+                if retry < 2:
+                    await asyncio.sleep(2 * (retry + 1))
+        log.warning(f"[{sender._appid}] 分片上传3次均失败, 最后错误: {last_err}")
+        return None
 
     req_data = {
         'srv_send_msg': False,
@@ -107,10 +116,17 @@ async def chunked_upload(sender, file_path, file_type, endpoint, *, file_name=No
     # 提取 scope 路径: /v2/groups/{id}/files -> /v2/groups/{id}
     scope = endpoint.rsplit('/files', 1)[0]
 
-    # 1. 申请上传
+    # 1. 申请上传 (带重试)
     prep_data = {'file_type': file_type, 'file_name': fname,
                  'file_size': file_size, **hashes}
-    success, prep = await sender.post_json(f"{scope}/upload_prepare", prep_data)
+    prep = None
+    for prep_retry in range(3):
+        success, prep = await sender.post_json(f"{scope}/upload_prepare", prep_data)
+        if success:
+            break
+        log.warning(f"[{sender._appid}] upload_prepare 第{prep_retry+1}次失败: {prep}")
+        if prep_retry < 2:
+            await asyncio.sleep(1.5 * (prep_retry + 1))
     if not success:
         raise Exception(f"upload_prepare failed: {prep}")
 
