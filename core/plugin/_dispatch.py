@@ -14,6 +14,13 @@ log = get_logger(FRAMEWORK, "插件管理")
 
 _S_GROUP, _S_DIRECT, _S_CHANNEL = 1, 2, 4
 
+# 需要走完整检查链的事件类型
+_FULL_CHECK_TYPES = frozenset({
+    'GROUP_AT_MESSAGE_CREATE', 'GROUP_MESSAGE_CREATE',
+    'C2C_MESSAGE_CREATE', 'AT_MESSAGE_CREATE',
+    'DIRECT_MESSAGE_CREATE', 'MESSAGE_CREATE',
+})
+
 
 def _scene_mask(h):
     return ((_S_GROUP if h['group_only'] else 0)
@@ -65,20 +72,44 @@ class _DispatchMixin:
         et = event.event_type
         event._sender = sender
 
-        is_non_at = (et == 'GROUP_MESSAGE_CREATE' and not getattr(event, 'is_at_self', False))
-        # 全量消息中@自己时, quiet_at_self=true 则抑制系统回复但仍匹配 handler
+        # ── 非消息事件 (lifecycle/reaction) 快速路径: 跳过所有检查直接匹配 handler ──
+        if et not in _FULL_CHECK_TYPES:
+            handlers = self._handlers_for(et)
+            if not handlers:
+                return False
+            scene = _event_scene(event)
+            for h in handlers:
+                ab = h['_allowed_bots']
+                if ab is not None and appid not in ab:
+                    continue
+                m = h['compiled'].search(content) if content else h['compiled'].search('')
+                if not m:
+                    continue
+                if h['_smask'] & ~scene:
+                    continue
+                plugin_name = h['name'] or h.get('_plugin', '')
+                log_service = self._get_log_service(event)
+                event._reply_log_cb = _make_reply_log_cb(plugin_name, log_service)
+                event._reply_plugin_name = plugin_name or ''
+                asyncio.create_task(self._run_handler(h, event, m, plugin_name, user_id, et, content))
+                return True
+            return False
+
+        # ── 消息事件: 一次性读取配置 ──
+        _get = cfg.get_bot_setting
+        is_group_msg = (et == 'GROUP_MESSAGE_CREATE')
+        is_at_self = event.is_at_self
+
+        is_non_at = is_group_msg and not is_at_self
         suppress_reply = is_non_at or (
-            et == 'GROUP_MESSAGE_CREATE' and getattr(event, 'is_at_self', False)
-            and cfg.get_bot_setting(appid, 'non_at_message.quiet_at_self', False))
-        # 其他机器人发送的消息抑制系统回复 (所有事件类型)
-        if not suppress_reply and getattr(event, 'is_bot', False) \
-                and cfg.get_bot_setting(appid, 'message.suppress_bot_system_reply', False):
+            is_group_msg and is_at_self and _get(appid, 'non_at_message.quiet_at_self', False))
+        if not suppress_reply and event.is_bot \
+                and _get(appid, 'message.suppress_bot_system_reply', False):
             suppress_reply = True
 
         # 过滤仅@其他机器人的全量消息
-        if et == 'GROUP_MESSAGE_CREATE' and getattr(event, 'is_at_other_bot', False) \
-                and not getattr(event, 'is_at_self', False) \
-                and cfg.get_bot_setting(appid, 'non_at_message.ignore_at_other_bot', False):
+        if is_group_msg and event.is_at_other_bot and not is_at_self \
+                and _get(appid, 'non_at_message.ignore_at_other_bot', False):
             return False
 
         # 黑名单
@@ -91,20 +122,20 @@ class _DispatchMixin:
                 return True
 
         # 维护模式
-        if not suppress_reply and cfg.get_bot_setting(appid, 'maintenance.enabled', False) \
+        if not suppress_reply and _get(appid, 'maintenance.enabled', False) \
                 and not self._is_owner(event):
-            if cfg.get_bot_setting(appid, 'maintenance.reply', True):
+            if _get(appid, 'maintenance.reply', True):
                 asyncio.create_task(event.reply(template_name='maintenance'))
             return True
 
         # 非AT群消息权限
         non_at_ok = False
         if is_non_at:
-            if cfg.get_bot_setting(appid, 'non_at_message.enabled', False):
+            if _get(appid, 'non_at_message.enabled', False):
                 non_at_ok = True
             else:
                 gid = event.group_id or ''
-                wl = cfg.get_bot_setting(appid, 'non_at_message.group_whitelist', []) or []
+                wl = _get(appid, 'non_at_message.group_whitelist', []) or []
                 non_at_ok = bool(gid and gid in wl)
 
         # 拦截器
@@ -127,14 +158,14 @@ class _DispatchMixin:
                 return True
 
         # 无匹配 → 默认回复
-        should_default = not suppress_reply and (
-            et in ('GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE')
-            or (et == 'GROUP_MESSAGE_CREATE' and getattr(event, 'is_at_self', False)))
-        if should_default and cfg.get_bot_setting(appid, 'message.send_default_response', True):
-            excluded = cfg.get_bot_setting(appid, 'message.default_response_excluded_regex', []) or []
-            if not any(re.search(p, content) for p in excluded if p):
-                asyncio.create_task(event.reply(
-                    template_name='default', template_vars={'user_id': user_id}))
+        if not suppress_reply and (
+                et in ('GROUP_AT_MESSAGE_CREATE', 'C2C_MESSAGE_CREATE')
+                or (is_group_msg and is_at_self)):
+            if _get(appid, 'message.send_default_response', True):
+                excluded = _get(appid, 'message.default_response_excluded_regex', []) or []
+                if not any(re.search(p, content) for p in excluded if p):
+                    asyncio.create_task(event.reply(
+                        template_name='default', template_vars={'user_id': user_id}))
         return False
 
     def _match_handlers(self, handlers, try_content, event, appid, is_non_at,
