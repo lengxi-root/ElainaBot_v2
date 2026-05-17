@@ -2,24 +2,35 @@
 
 import asyncio
 from collections import defaultdict
-from core.base.logger import get_logger, FRAMEWORK
+
+from core.base.logger import FRAMEWORK, get_logger
 
 log = get_logger(FRAMEWORK, "Hook")
+
+
+def _make_callback(cb, args, kwargs):
+    """创建闭包以固定 loop 变量, 避免 B023 问题"""
+
+    def _wrapper():
+        return cb(*args, **kwargs)
+
+    return _wrapper
 
 
 class HookManager:
     """通用 Hook 管理器 (全局单例, 任意字符串作为 hook 名称)"""
 
-    __slots__ = ('_hooks', '_sorted')
+    __slots__ = ("_hooks", "_sorted")
 
     def __init__(self):
         self._hooks = defaultdict(list)  # {name: [(pri, owner, cb, is_coro)]}
         self._sorted = {}
 
-    def register(self, hook_name, callback, *, owner='unknown', priority=100):
+    def register(self, hook_name, callback, *, owner="unknown", priority=100):
         """注册 hook 回调 (priority 越小越先执行)"""
         self._hooks[hook_name].append(
-            (priority, owner, callback, asyncio.iscoroutinefunction(callback)))
+            (priority, owner, callback, asyncio.iscoroutinefunction(callback))
+        )
         self._sorted.pop(hook_name, None)
 
     def unregister(self, hook_name, callback):
@@ -59,7 +70,7 @@ class HookManager:
                 if is_coro:
                     await cb(*args, **kwargs)
                 else:
-                    await loop.run_in_executor(None, lambda: cb(*args, **kwargs))
+                    await loop.run_in_executor(None, _make_callback(cb, args, kwargs))
             except Exception as e:
                 log.warning(f"[{owner}] hook '{hook_name}': {e}")
 
@@ -70,7 +81,11 @@ class HookManager:
         loop = asyncio.get_running_loop()
         for _, owner, cb, is_coro in self._get_sorted(hook_name):
             try:
-                data = await cb(data) if is_coro else await loop.run_in_executor(None, cb, data)
+                data = (
+                    await cb(data)
+                    if is_coro
+                    else await loop.run_in_executor(None, cb, data)
+                )
                 if data is None:
                     return None
             except Exception as e:
@@ -83,8 +98,11 @@ class HookManager:
 
     def list_hooks(self):
         """列出所有已注册 hook"""
-        return {name: [{'owner': e[1], 'priority': e[0]} for e in self._get_sorted(name)]
-                for name, entries in self._hooks.items() if entries}
+        return {
+            name: [{"owner": e[1], "priority": e[0]} for e in self._get_sorted(name)]
+            for name, entries in self._hooks.items()
+            if entries
+        }
 
     def clear(self):
         self._hooks.clear()
@@ -95,7 +113,19 @@ _instance = None
 
 
 def get_hook_manager():
+    """获取全局 HookManager (已弃用, 推荐使用 get_app().hook_manager)
+
+    为向后兼容保留, 优先从 Application 获取, 回退到模块级单例。
+    """
     global _instance
+    try:
+        from core.application import get_app
+
+        app = get_app()
+        if app is not None:
+            return app.hook_manager
+    except Exception:
+        pass
     if _instance is None:
         _instance = HookManager()
     return _instance
