@@ -14,8 +14,15 @@ sys.dont_write_bytecode = True
 
 # 全局跳过 SSL 证书验证
 _orig_ctx = ssl.create_default_context
+
+
 def _no_verify(*a, **kw):
-    c = _orig_ctx(*a, **kw); c.check_hostname = False; c.verify_mode = ssl.CERT_NONE; return c
+    c = _orig_ctx(*a, **kw)
+    c.check_hostname = False
+    c.verify_mode = ssl.CERT_NONE
+    return c
+
+
 ssl.create_default_context = _no_verify
 
 # 加载 .env 文件 (必须在导入核心模块之前)
