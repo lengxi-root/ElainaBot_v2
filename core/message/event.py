@@ -118,7 +118,7 @@ class Event:
         'is_group', 'is_direct', 'is_channel', 'is_interaction', 'is_lifecycle',
         'interaction_data', 'chat_type_code', 'scene', 'scene_source',
         'sharer_id', 'scene_param',
-        'mentions', 'is_at_self', 'is_at_other_bot', 'is_at_all',
+        'mentions', 'is_at_self', 'is_at_other_bot', 'is_at_other_user', 'is_at_all',
         '_sender', '_reply_log_cb', '_reply_plugin_name',
     )
 
@@ -160,6 +160,7 @@ class Event:
         self.mentions = []
         self.is_at_self = False
         self.is_at_other_bot = False
+        self.is_at_other_user = False
         self.is_at_all = False
         self._sender = None
         self._reply_log_cb = None

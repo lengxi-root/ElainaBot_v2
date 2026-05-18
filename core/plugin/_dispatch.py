@@ -112,6 +112,11 @@ class _DispatchMixin:
                 and _get(appid, 'non_at_message.ignore_at_other_bot', False):
             return False
 
+        # 过滤仅@其他用户的全量消息
+        if is_group_msg and event.is_at_other_user and not is_at_self \
+                and _get(appid, 'non_at_message.ignore_at_other_user', False):
+            return False
+
         # 黑名单
         if not suppress_reply:
             bl = self._check_blacklist(event)

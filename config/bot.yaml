@@ -58,7 +58,8 @@ bots:
     non_at_message:
       enabled: false                   # 全量时未@消息响应开关
       group_whitelist: []              # 群白名单 (关闭时仅白名单群触发插件)
-      ignore_at_other_bot: false       # 忽略仅@其他机器人的消息 (未@自己时静默跳过)
+      ignore_at_other_bot: true        # 忽略仅@其他机器人的消息 (未@自己时静默跳过)
+      ignore_at_other_user: true       # 忽略仅@其他用户的消息 (未@自己时静默跳过)
       ignore_bot_sender: true          # 屏蔽其他机器人发送的消息 (author.bot=true)
       quiet_at_self: false             # 全量消息中@机器人时, 抑制黑名单/维护等默认回复 (仍匹配插件)
 
