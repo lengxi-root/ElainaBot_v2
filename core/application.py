@@ -162,6 +162,7 @@ class Application(EventHandlerMixin):
             log_base=log_base,
             on_event=self._on_event,
             push_web_log=self._push_web_log,
+            media_dir=self._media_dir,
         )
         if valid_bots:
             await self._bot_registry.start_all()
