@@ -9,7 +9,7 @@ from core.base.logger import SYSTEM, report_error
 from core.bot.instance import BotInstance
 from core.network.websocket import WSClient
 
-log = logging.getLogger("ElainaBot.registry")
+log = logging.getLogger('ElainaBot.registry')
 
 
 class BotRegistry:
@@ -39,20 +39,16 @@ class BotRegistry:
     async def start_all(self):
         """启动所有有效机器人"""
         bot_configs = cfg.get_bot_configs()
-        valid = [b for b in bot_configs if b.get("appid") and b.get("secret")]
+        valid = [b for b in bot_configs if b.get('appid') and b.get('secret')]
         if not valid:
-            log.warning("未配置有效的机器人")
+            log.warning('未配置有效的机器人')
             return
-        results = await asyncio.gather(
-            *(self._start_one(bc) for bc in valid), return_exceptions=True
-        )
-        count = sum(
-            1 for r in results if r is not None and not isinstance(r, Exception)
-        )
-        log.info(f"已启动 {count} 个机器人")
+        results = await asyncio.gather(*(self._start_one(bc) for bc in valid), return_exceptions=True)
+        count = sum(1 for r in results if r is not None and not isinstance(r, Exception))
+        log.info(f'已启动 {count} 个机器人')
 
     async def _start_one(self, bot_cfg):
-        appid = str(bot_cfg["appid"])
+        appid = str(bot_cfg['appid'])
         try:
             instance = BotInstance(bot_cfg, self._log_base)
             await instance.start(self._on_event)
@@ -61,7 +57,7 @@ class BotRegistry:
                 asyncio.create_task(instance.ws_client.connect())
             return instance
         except Exception as e:
-            report_error(SYSTEM, "启动器", e, context={"appid": appid})
+            report_error(SYSTEM, '启动器', e, context={'appid': appid})
             return None
 
     # ---------- 热重载 ----------
@@ -73,11 +69,7 @@ class BotRegistry:
 
     async def _sync(self):
         """同步 bot 配置: 新增/移除/更新 WebSocket"""
-        valid = {
-            str(b["appid"]): b
-            for b in cfg.get_bot_configs()
-            if b.get("appid") and b.get("secret")
-        }
+        valid = {str(b['appid']): b for b in cfg.get_bot_configs() if b.get('appid') and b.get('secret')}
         current = set(self._bots)
         target = set(valid)
 
@@ -85,39 +77,35 @@ class BotRegistry:
         for appid in current - target:
             bot = self._bots.pop(appid)
             await bot.stop()
-            self._push_web_log(
-                "framework", {"content": f"热重载: {bot.name} ({appid}) 已移除"}
-            )
+            self._push_web_log('framework', {'content': f'热重载: {bot.name} ({appid}) 已移除'})
 
         # 新增
         for appid in target - current:
             inst = await self._start_one(valid[appid])
             if inst:
-                self._push_web_log(
-                    "framework", {"content": f"热重载: {inst.name} ({appid}) 已启动"}
-                )
+                self._push_web_log('framework', {'content': f'热重载: {inst.name} ({appid}) 已启动'})
 
         # 更新 WebSocket 配置
         for appid in current & target:
             bot = self._bots[appid]
             new_cfg = valid[appid]
             bot.bot_cfg = new_cfg
-            bot.owner_ids = new_cfg.get("owner_ids", [])
-            bot.robot_qq = str(new_cfg.get("robot_qq", ""))
+            bot.owner_ids = new_cfg.get('owner_ids', [])
+            bot.robot_qq = str(new_cfg.get('robot_qq', ''))
 
-            ws_cfg = new_cfg.get("websocket", {})
-            if ws_cfg.get("enabled") and not bot.ws_client:
+            ws_cfg = new_cfg.get('websocket', {})
+            if ws_cfg.get('enabled') and not bot.ws_client:
                 bot.ws_client = WSClient(
                     appid=appid,
                     token_manager=bot.token_manager,
                     on_event=self._on_event,
-                    reconnect_interval=ws_cfg.get("reconnect_interval", 5),
-                    max_reconnects=ws_cfg.get("max_reconnects", -1),
-                    custom_url=ws_cfg.get("custom_url", ""),
-                    custom_api_base=str(new_cfg.get("api_base", "") or ""),
+                    reconnect_interval=ws_cfg.get('reconnect_interval', 5),
+                    max_reconnects=ws_cfg.get('max_reconnects', -1),
+                    custom_url=ws_cfg.get('custom_url', ''),
+                    custom_api_base=str(new_cfg.get('api_base', '') or ''),
                 )
                 asyncio.create_task(bot.ws_client.connect())
-            elif not ws_cfg.get("enabled") and bot.ws_client:
+            elif not ws_cfg.get('enabled') and bot.ws_client:
                 await bot.ws_client.close()
                 bot.ws_client = None
 
@@ -125,7 +113,5 @@ class BotRegistry:
 
     async def shutdown(self):
         if self._bots:
-            await asyncio.gather(
-                *(b.stop() for b in self._bots.values()), return_exceptions=True
-            )
+            await asyncio.gather(*(b.stop() for b in self._bots.values()), return_exceptions=True)
         self._bots.clear()

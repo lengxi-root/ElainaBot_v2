@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from core.base.logger import FRAMEWORK, get_logger
 from core.storage._schema import DAU_TABLE_SQL
 
-log = get_logger(FRAMEWORK, "DAU统计")
+log = get_logger(FRAMEWORK, 'DAU统计')
 
 # 默认每日执行时间
 _SCHEDULE_HOUR = 0
@@ -21,7 +21,7 @@ _SCHEDULE_MINUTE = 10
 class DAUService:
     """DAU 统计服务 — 异步调度 + SQLite 直读"""
 
-    __slots__ = ("_log_dir", "_running", "_task", "_schedule_hour", "_schedule_minute")
+    __slots__ = ('_log_dir', '_running', '_task', '_schedule_hour', '_schedule_minute')
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class DAUService:
             return
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
-        log.info(f"已启动 [每日 {self._schedule_hour:02d}:{self._schedule_minute:02d}]")
+        log.info(f'已启动 [每日 {self._schedule_hour:02d}:{self._schedule_minute:02d}]')
 
     async def stop(self):
         self._running = False
@@ -63,7 +63,7 @@ class DAUService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                log.warning(f"调度异常: {e}")
+                log.warning(f'调度异常: {e}')
                 await asyncio.sleep(60)
 
     def _next_run_time(self):
@@ -78,22 +78,22 @@ class DAUService:
 
     async def regenerate_yesterday(self):
         """重算所有机器人昨日 DAU"""
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         return await self.regenerate_date(yesterday)
 
     async def regenerate_date(self, date_str):
         """重算指定日期所有机器人 DAU, 返回 {appid: bool}"""
         results = {}
         appids = self.list_appids()
-        log.info(f"开始统计 [{date_str}], {len(appids)} 个机器人")
+        log.info(f'开始统计 [{date_str}], {len(appids)} 个机器人')
         for appid in appids:
             try:
                 ok = await self.regenerate(appid, date_str)
                 results[appid] = ok
             except Exception as e:
-                log.warning(f"[{appid}] 统计失败: {e}")
+                log.warning(f'[{appid}] 统计失败: {e}')
                 results[appid] = False
-        log.info(f"统计完成 [{date_str}]: {sum(results.values())}/{len(results)} 成功")
+        log.info(f'统计完成 [{date_str}]: {sum(results.values())}/{len(results)} 成功')
         return results
 
     async def regenerate(self, appid, date_str):
@@ -115,25 +115,21 @@ class DAUService:
         """列出所有有日志记录的 appid"""
         if not os.path.isdir(self._log_dir):
             return []
-        return [
-            name
-            for name in os.listdir(self._log_dir)
-            if os.path.isdir(os.path.join(self._log_dir, name))
-        ]
+        return [name for name in os.listdir(self._log_dir) if os.path.isdir(os.path.join(self._log_dir, name))]
 
     def _message_db_path(self, appid, date_str):
-        return os.path.join(self._log_dir, appid, date_str, "message.db")
+        return os.path.join(self._log_dir, appid, date_str, 'message.db')
 
     def _lifecycle_db_path(self, appid, date_str):
-        return os.path.join(self._log_dir, appid, date_str, "lifecycle.db")
+        return os.path.join(self._log_dir, appid, date_str, 'lifecycle.db')
 
     def _dau_db_path(self, appid):
-        return os.path.join(self._log_dir, appid, "dau.db")
+        return os.path.join(self._log_dir, appid, 'dau.db')
 
     def _regenerate_sync(self, appid, date_str):
         msg_db = self._message_db_path(appid, date_str)
         if not os.path.isfile(msg_db):
-            log.debug(f"[{appid}] {date_str} 无消息日志")
+            log.debug(f'[{appid}] {date_str} 无消息日志')
             return False
 
         msg_stats = self._compute_message_stats(msg_db)
@@ -144,18 +140,15 @@ class DAUService:
         event_stats = self._compute_lifecycle_stats(appid, date_str)
 
         self._save_dau(appid, date_str, msg_stats, event_stats)
-        log.info(
-            f"[{appid}] {date_str} 已统计: 消息 {msg_stats['total_messages']}, "
-            f"用户 {msg_stats['active_users']}, 群 {msg_stats['active_groups']}"
-        )
+        log.info(f'[{appid}] {date_str} 已统计: 消息 {msg_stats["total_messages"]}, 用户 {msg_stats["active_users"]}, 群 {msg_stats["active_groups"]}')
         return True
 
     def _compute_message_stats(self, db_path):
         try:
-            conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+            conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True, timeout=10)
             conn.row_factory = sqlite3.Row
         except sqlite3.Error as e:
-            log.warning(f"打开消息库失败 [{db_path}]: {e}")
+            log.warning(f'打开消息库失败 [{db_path}]: {e}')
             return None
         try:
             cur = conn.cursor()
@@ -168,14 +161,14 @@ class DAUService:
                 FROM log
             """)
             row = cur.fetchone()
-            if not row or row["total"] == 0:
+            if not row or row['total'] == 0:
                 return None
 
             stats = {
-                "total_messages": row["total"],
-                "active_users": row["users"],
-                "active_groups": row["groups_"],
-                "private_messages": row["private"],
+                'total_messages': row['total'],
+                'active_users': row['users'],
+                'active_groups': row['groups_'],
+                'private_messages': row['private'],
             }
 
             cur.execute("""
@@ -183,49 +176,41 @@ class DAUService:
                 FROM log GROUP BY hr ORDER BY c DESC LIMIT 1
             """)
             r = cur.fetchone()
-            stats["peak_hour"] = int(r["hr"]) if r and r["hr"] else 0
-            stats["peak_hour_count"] = r["c"] if r else 0
+            stats['peak_hour'] = int(r['hr']) if r and r['hr'] else 0
+            stats['peak_hour_count'] = r['c'] if r else 0
 
             cur.execute("""
                 SELECT group_id, COUNT(*) AS c FROM log
                 WHERE group_id != '' AND group_id != 'c2c'
                 GROUP BY group_id ORDER BY c DESC LIMIT 10
             """)
-            stats["top_groups"] = [
-                {"group_id": r["group_id"], "message_count": r["c"]}
-                for r in cur.fetchall()
-            ]
+            stats['top_groups'] = [{'group_id': r['group_id'], 'message_count': r['c']} for r in cur.fetchall()]
 
             cur.execute("""
                 SELECT user_id, COUNT(*) AS c FROM log
                 WHERE user_id != ''
                 GROUP BY user_id ORDER BY c DESC LIMIT 10
             """)
-            stats["top_users"] = [
-                {"user_id": r["user_id"], "message_count": r["c"]}
-                for r in cur.fetchall()
-            ]
+            stats['top_users'] = [{'user_id': r['user_id'], 'message_count': r['c']} for r in cur.fetchall()]
 
             cur.execute("""
                 SELECT plugin_name, COUNT(*) AS c FROM log
                 WHERE plugin_name != ''
                 GROUP BY plugin_name ORDER BY c DESC LIMIT 10
             """)
-            stats["top_commands"] = [
-                {"command": r["plugin_name"], "count": r["c"]} for r in cur.fetchall()
-            ]
+            stats['top_commands'] = [{'command': r['plugin_name'], 'count': r['c']} for r in cur.fetchall()]
             return stats
         except Exception as e:
-            log.warning(f"计算统计失败: {e}")
+            log.warning(f'计算统计失败: {e}')
             return None
         finally:
             conn.close()
 
     _EMPTY_LIFECYCLE = {
-        "group_join_count": 0,
-        "group_leave_count": 0,
-        "friend_add_count": 0,
-        "friend_remove_count": 0,
+        'group_join_count': 0,
+        'group_leave_count': 0,
+        'friend_add_count': 0,
+        'friend_remove_count': 0,
     }
 
     def _compute_lifecycle_stats(self, appid, date_str):
@@ -233,16 +218,16 @@ class DAUService:
         if not conn:
             return dict(self._EMPTY_LIFECYCLE)
         try:
-            cur = conn.execute("SELECT type, COUNT(*) AS c FROM log GROUP BY type")
-            counts = {row["type"]: row["c"] for row in cur.fetchall()}
+            cur = conn.execute('SELECT type, COUNT(*) AS c FROM log GROUP BY type')
+            counts = {row['type']: row['c'] for row in cur.fetchall()}
             return {
-                "group_join_count": counts.get("group_add", 0),
-                "group_leave_count": counts.get("group_del", 0),
-                "friend_add_count": counts.get("friend_add", 0),
-                "friend_remove_count": counts.get("friend_del", 0),
+                'group_join_count': counts.get('group_add', 0),
+                'group_leave_count': counts.get('group_del', 0),
+                'friend_add_count': counts.get('friend_add', 0),
+                'friend_remove_count': counts.get('friend_del', 0),
             }
         except Exception as e:
-            log.debug(f"[{appid}] 读取 lifecycle 统计失败: {e}")
+            log.debug(f'[{appid}] 读取 lifecycle 统计失败: {e}')
             return dict(self._EMPTY_LIFECYCLE)
         finally:
             conn.close()
@@ -275,23 +260,23 @@ class DAUService:
             """,
                 (
                     date_str,
-                    msg_stats["active_users"],
-                    msg_stats["active_groups"],
-                    msg_stats["total_messages"],
-                    msg_stats["private_messages"],
-                    event_stats["group_join_count"],
-                    event_stats["group_leave_count"],
-                    event_stats["friend_add_count"],
-                    event_stats["friend_remove_count"],
+                    msg_stats['active_users'],
+                    msg_stats['active_groups'],
+                    msg_stats['total_messages'],
+                    msg_stats['private_messages'],
+                    event_stats['group_join_count'],
+                    event_stats['group_leave_count'],
+                    event_stats['friend_add_count'],
+                    event_stats['friend_remove_count'],
                     json.dumps(
-                        {k: v for k, v in msg_stats.items() if k not in ("top_users",)},
+                        {k: v for k, v in msg_stats.items() if k not in ('top_users',)},
                         ensure_ascii=False,
                     ),
                     json.dumps(
-                        {"top_users": msg_stats.get("top_users", [])},
+                        {'top_users': msg_stats.get('top_users', [])},
                         ensure_ascii=False,
                     ),
-                    json.dumps(msg_stats.get("top_commands", []), ensure_ascii=False),
+                    json.dumps(msg_stats.get('top_commands', []), ensure_ascii=False),
                 ),
             )
             conn.commit()
@@ -304,7 +289,7 @@ class DAUService:
         if not os.path.isfile(path):
             return None
         try:
-            conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+            conn = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=10)
             conn.row_factory = sqlite3.Row
             return conn
         except sqlite3.Error:
@@ -315,7 +300,7 @@ class DAUService:
         if not conn:
             return None
         try:
-            row = conn.execute("SELECT * FROM log WHERE date=?", (date_str,)).fetchone()
+            row = conn.execute('SELECT * FROM log WHERE date=?', (date_str,)).fetchone()
             return self._row_to_dict(row) if row else None
         finally:
             conn.close()
@@ -325,14 +310,12 @@ class DAUService:
         if not conn:
             return []
         try:
-            rows = conn.execute(
-                "SELECT * FROM log ORDER BY date DESC LIMIT ?", (days,)
-            ).fetchall()
+            rows = conn.execute('SELECT * FROM log ORDER BY date DESC LIMIT ?', (days,)).fetchall()
             return [self._row_to_dict(r) for r in rows]
         finally:
             conn.close()
 
-    _JSON_KEYS = ("message_stats_detail", "user_stats_detail", "command_stats_detail")
+    _JSON_KEYS = ('message_stats_detail', 'user_stats_detail', 'command_stats_detail')
 
     @staticmethod
     def _row_to_dict(row):

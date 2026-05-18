@@ -11,9 +11,9 @@ from datetime import datetime
 import psutil
 from aiohttp import web
 
-log = logging.getLogger("ElainaBot.web.sysinfo")
+log = logging.getLogger('ElainaBot.web.sysinfo')
 
-_IS_WINDOWS = platform.system() == "Windows"
+_IS_WINDOWS = platform.system() == 'Windows'
 _start_time = datetime.now()
 _last_gc = 0
 _GC_INTERVAL = 30
@@ -34,31 +34,31 @@ def _cpu_model():
     global _cpu_model_cache
     if _cpu_model_cache:
         return _cpu_model_cache
-    model = ""
+    model = ''
     try:
         if _IS_WINDOWS:
             import winreg
 
             key = winreg.OpenKey(
                 winreg.HKEY_LOCAL_MACHINE,
-                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
+                r'HARDWARE\DESCRIPTION\System\CentralProcessor\0',
             )
-            model = winreg.QueryValueEx(key, "ProcessorNameString")[0].strip()
+            model = winreg.QueryValueEx(key, 'ProcessorNameString')[0].strip()
             winreg.CloseKey(key)
         else:
-            with open("/proc/cpuinfo") as f:
+            with open('/proc/cpuinfo') as f:
                 for line in f:
-                    if line.startswith("model name"):
-                        model = line.split(":", 1)[1].strip()
+                    if line.startswith('model name'):
+                        model = line.split(':', 1)[1].strip()
                         break
     except Exception:
         pass
     if not model:
         with contextlib.suppress(Exception):
-            model = platform.processor() or ""
+            model = platform.processor() or ''
     if not model:
         cores = psutil.cpu_count(logical=True)
-        model = f"{cores} 核处理器"
+        model = f'{cores} 核处理器'
     _cpu_model_cache = model
     return model
 
@@ -96,67 +96,61 @@ def get_system_info() -> dict:
     active_groups = total_users = total_groups = 0
     if _bot_manager:
         bots_count = len(_bot_manager._bots)
-        pm = getattr(_bot_manager, "_plugin_manager", None)
+        pm = getattr(_bot_manager, '_plugin_manager', None)
         if pm:
-            plugins_count = getattr(pm, "handler_count", 0)
+            plugins_count = getattr(pm, 'handler_count', 0)
         for inst in _bot_manager._bots.values():
             try:
                 rows = inst.log_service.query(
-                    "message",
-                    "SELECT COUNT(*) as cnt, COUNT(DISTINCT user_id) as users, "
-                    "COUNT(DISTINCT group_id) as groups "
-                    "FROM log WHERE user_id != ''",
+                    'message',
+                    "SELECT COUNT(*) as cnt, COUNT(DISTINCT user_id) as users, COUNT(DISTINCT group_id) as groups FROM log WHERE user_id != ''",
                 )
                 if rows:
-                    today_messages += rows[0].get("cnt", 0)
-                    today_active += rows[0].get("users", 0)
-                    active_groups += rows[0].get("groups", 0)
+                    today_messages += rows[0].get('cnt', 0)
+                    today_active += rows[0].get('users', 0)
+                    active_groups += rows[0].get('groups', 0)
             except Exception:
                 pass
             try:
-                r = inst.log_service.query_data("SELECT COUNT(*) as c FROM users")
+                r = inst.log_service.query_data('SELECT COUNT(*) as c FROM users')
                 if r:
-                    total_users += r[0].get("c", 0)
+                    total_users += r[0].get('c', 0)
             except Exception:
                 pass
             try:
-                r = inst.log_service.query_data(
-                    "SELECT COUNT(*) as c FROM groups_users"
-                )
+                r = inst.log_service.query_data('SELECT COUNT(*) as c FROM groups_users')
                 if r:
-                    total_groups += r[0].get("c", 0)
+                    total_groups += r[0].get('c', 0)
             except Exception:
                 pass
 
     return {
-        "cpu_percent": round(sys_cpu, 1),
-        "framework_cpu_percent": round(cpu_pct, 1),
-        "cpu_cores": cpu_cores,
-        "cpu_model": _cpu_model(),
-        "memory_percent": round(sys_mem.percent, 1),
-        "memory_used": round(sys_mem.used / (1024**2), 1),
-        "memory_total": round(mem_total_mb, 1),
-        "framework_memory_percent": round(
-            (rss_mb / mem_total_mb) * 100 if mem_total_mb else 0, 1
-        ),
-        "framework_memory_total": round(rss_mb, 1),
-        "disk_info": {
-            "total": disk.total,
-            "used": disk.used,
-            "free": disk.free,
-            "percent": disk.percent,
+        'cpu_percent': round(sys_cpu, 1),
+        'framework_cpu_percent': round(cpu_pct, 1),
+        'cpu_cores': cpu_cores,
+        'cpu_model': _cpu_model(),
+        'memory_percent': round(sys_mem.percent, 1),
+        'memory_used': round(sys_mem.used / (1024**2), 1),
+        'memory_total': round(mem_total_mb, 1),
+        'framework_memory_percent': round((rss_mb / mem_total_mb) * 100 if mem_total_mb else 0, 1),
+        'framework_memory_total': round(rss_mb, 1),
+        'disk_info': {
+            'total': disk.total,
+            'used': disk.used,
+            'free': disk.free,
+            'percent': disk.percent,
         },
-        "uptime": uptime,
-        "system_uptime": sys_uptime,
-        "start_time": _start_time.strftime("%Y-%m-%d %H:%M:%S"),
-        "system_version": platform.platform(),
-        "plugins_count": plugins_count,
-        "bots_count": bots_count,
-        "today_active": today_active,
-        "today_messages": today_messages,
-        "active_groups": active_groups,
-        "total_users": total_users,
-        "total_groups": total_groups,
+        'uptime': uptime,
+        'system_uptime': sys_uptime,
+        'start_time': _start_time.strftime('%Y-%m-%d %H:%M:%S'),
+        'system_version': platform.platform(),
+        'plugins_count': plugins_count,
+        'bots_count': bots_count,
+        'today_active': today_active,
+        'today_messages': today_messages,
+        'active_groups': active_groups,
+        'total_users': total_users,
+        'total_groups': total_groups,
     }
 
 
@@ -164,5 +158,5 @@ async def handle_system_info(request: web.Request):
     try:
         return web.json_response(get_system_info())
     except Exception as e:
-        log.error(f"获取系统信息失败: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        log.error(f'获取系统信息失败: {e}')
+        return web.json_response({'error': str(e)}, status=500)

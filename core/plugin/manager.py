@@ -10,13 +10,13 @@ from core.plugin._dispatch import _DispatchMixin
 from core.plugin._loader import _LoaderMixin
 from core.plugin._watcher import _WatcherMixin
 
-log = get_logger(FRAMEWORK, "插件管理")
+log = get_logger(FRAMEWORK, '插件管理')
 
 
 class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin):
     """插件管理器 — 通过 Mixin 组合加载/分发/监视/黑名单能力"""
 
-    def __init__(self, plugins_dir="plugins", bot_appid=""):
+    def __init__(self, plugins_dir='plugins', bot_appid=''):
         self._dir = os.path.abspath(plugins_dir)
         self._appid = str(bot_appid)
         self._plugins = OrderedDict()
@@ -51,22 +51,20 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
             if not plugin.enabled:
                 continue
             for h in plugin.handlers:
-                h["_plugin"] = plugin.name
+                h['_plugin'] = plugin.name
                 handlers.append(h)
             for ic in plugin.interceptors:
-                ic["_plugin"] = plugin.name
+                ic['_plugin'] = plugin.name
                 intercepts.append(ic)
-        self._all_handlers = sorted(handlers, key=lambda h: -h["priority"])
-        self._all_interceptors = sorted(intercepts, key=lambda i: -i["priority"])
+        self._all_handlers = sorted(handlers, key=lambda h: -h['priority'])
+        self._all_interceptors = sorted(intercepts, key=lambda i: -i['priority'])
         self._apply_bot_bindings()
         self._build_dispatch_index()
 
     def _apply_bot_bindings(self):
         pb = self._plugin_bots
         for h in self._all_handlers:
-            h["_allowed_bots"] = _resolve_allowed_bots(
-                pb, h.get("_plugin", ""), h.get("_file", "")
-            )
+            h['_allowed_bots'] = _resolve_allowed_bots(pb, h.get('_plugin', ''), h.get('_file', ''))
 
     # ==================== 管理接口 ====================
 
@@ -87,13 +85,13 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
     def get_plugin_list(self):
         return [
             {
-                "name": p.name,
-                "enabled": p.enabled,
-                "handlers": [h["name"] for h in p.handlers],
-                "handler_count": len(p.handlers),
-                "load_time": round(p.load_time, 3),
-                "error": p.error,
-                "is_large": p.is_large,
+                'name': p.name,
+                'enabled': p.enabled,
+                'handlers': [h['name'] for h in p.handlers],
+                'handler_count': len(p.handlers),
+                'load_time': round(p.load_time, 3),
+                'error': p.error,
+                'is_large': p.is_large,
             }
             for p in self._plugins.values()
         ]
@@ -101,12 +99,12 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
     def get_command_list(self):
         return [
             {
-                "name": h["name"],
-                "pattern": h["pattern"],
-                "desc": h["desc"],
-                "plugin": h.get("_plugin", ""),
-                "owner_only": h["owner_only"],
-                "priority": h["priority"],
+                'name': h['name'],
+                'pattern': h['pattern'],
+                'desc': h['desc'],
+                'plugin': h.get('_plugin', ''),
+                'owner_only': h['owner_only'],
+                'priority': h['priority'],
             }
             for h in self._all_handlers
         ]
@@ -116,18 +114,18 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
         for p in self._plugins.values():
             cmds = [
                 {
-                    "name": h.get("name", ""),
-                    "pattern": h.get("pattern", ""),
-                    "desc": h.get("desc", ""),
-                    "owner_only": h.get("owner_only", False),
-                    "group_only": h.get("group_only", False),
+                    'name': h.get('name', ''),
+                    'pattern': h.get('pattern', ''),
+                    'desc': h.get('desc', ''),
+                    'owner_only': h.get('owner_only', False),
+                    'group_only': h.get('group_only', False),
                 }
                 for h in p.handlers
             ]
-            desc = ""
-            if p.module and getattr(p.module, "__doc__", None):
-                desc = p.module.__doc__.strip().split("\n")[0]
-            result[p.name] = {"commands": cmds, "description": desc, "meta": p.meta}
+            desc = ''
+            if p.module and getattr(p.module, '__doc__', None):
+                desc = p.module.__doc__.strip().split('\n')[0]
+            result[p.name] = {'commands': cmds, 'description': desc, 'meta': p.meta}
         return result
 
 
@@ -135,7 +133,7 @@ def _resolve_allowed_bots(pb, plugin_name, file_name):
     if not pb:
         return None
     if file_name:
-        bots = pb.get(f"{plugin_name}/{file_name}")
+        bots = pb.get(f'{plugin_name}/{file_name}')
         if bots is not None:
             return frozenset(bots) if bots else None
     if plugin_name:

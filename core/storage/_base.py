@@ -22,7 +22,7 @@ from core.storage._schema import (
     _migrate_missing_columns,
 )
 
-log = get_logger(SERVICE, "日志")
+log = get_logger(SERVICE, '日志')
 
 
 async def _shutdown_tasks(tasks, stop_event):
@@ -65,13 +65,13 @@ class _BaseLogService:
         self._init_lock = threading.Lock()  # 保护连接池初始化, 避免多线程竞态
         self._stop = asyncio.Event()
         self._tasks = []
-        self._log_tag = ""  # 子类设置
+        self._log_tag = ''  # 子类设置
 
     def _resolve_db_path(self, log_type, date=None):
         if log_type in DAILY_TYPES:
-            date = date or datetime.now().strftime("%Y-%m-%d")
-            return os.path.join(self._base_dir, date, f"{log_type}.db")
-        return os.path.join(self._base_dir, f"{log_type}.db")
+            date = date or datetime.now().strftime('%Y-%m-%d')
+            return os.path.join(self._base_dir, date, f'{log_type}.db')
+        return os.path.join(self._base_dir, f'{log_type}.db')
 
     def _get_conn(self, db_path, log_type):
         # 快路径: 已初始化的连接, 无锁直接返回 (dict 读取在 CPython 下原子)
@@ -86,12 +86,12 @@ class _BaseLogService:
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             conn = sqlite3.connect(db_path, check_same_thread=False)
             if self._wal:
-                conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
+                conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA synchronous=NORMAL')
             if db_path not in self._initialized:
                 schema = _SCHEMAS.get(log_type)
                 if schema:
-                    if log_type == "data":
+                    if log_type == 'data':
                         conn.executescript(schema)
                         _migrate_data_tables(conn)
                     else:
@@ -117,23 +117,23 @@ class _BaseLogService:
                 rows = conn.execute(sql, params).fetchall()
             return [dict(r) for r in rows]
         except Exception as e:
-            log.warning(f"[{self._log_tag}] 查询失败 [{log_type}]: {e}")
+            log.warning(f'[{self._log_tag}] 查询失败 [{log_type}]: {e}')
             return []
 
     @staticmethod
     def _extract_common_row(log_type, data, ts):
         """framework / error 通用提取 (子类共享)"""
-        if log_type == "framework":
-            return (ts, data.get("content", ""), data.get("level", "INFO"))
-        if log_type == "error":
+        if log_type == 'framework':
+            return (ts, data.get('content', ''), data.get('level', 'INFO'))
+        if log_type == 'error':
             return (
                 ts,
-                data.get("appid", "0000"),
-                data.get("module_type", ""),
-                data.get("module_name", ""),
-                data.get("content", ""),
-                data.get("traceback", ""),
-                _json_field(data, "context", {}),
+                data.get('appid', '0000'),
+                data.get('module_type', ''),
+                data.get('module_name', ''),
+                data.get('content', ''),
+                data.get('traceback', ''),
+                _json_field(data, 'context', {}),
             )
         return None
 
@@ -159,18 +159,16 @@ class _BaseLogService:
                 conn.executemany(sql, rows)
                 conn.commit()
         except sqlite3.Error as e:
-            log.error(f"[{self._log_tag}] SQLite 错误 [{log_type}]: {e}")
+            log.error(f'[{self._log_tag}] SQLite 错误 [{log_type}]: {e}')
             with contextlib.suppress(Exception):
                 conn.rollback()
 
     async def _write_batch(self, db_path, log_type, sql, rows):
         loop = asyncio.get_running_loop()
         try:
-            await loop.run_in_executor(
-                None, self._write_batch_sync, db_path, log_type, sql, rows
-            )
+            await loop.run_in_executor(None, self._write_batch_sync, db_path, log_type, sql, rows)
         except Exception as e:
-            log.error(f"[{self._log_tag}] 写入失败 [{log_type}]: {e}")
+            log.error(f'[{self._log_tag}] 写入失败 [{log_type}]: {e}')
 
     async def _flush_type(self, log_type):
         q = self._queues[log_type]
@@ -190,34 +188,28 @@ class _BaseLogService:
         if log_type in DAILY_TYPES:
             groups = defaultdict(list)
             for item in batch:
-                ts = item.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                ts = item.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                 row = self._extract_row(log_type, item)
                 if row:
                     groups[ts[:10]].append(row)
             for date, rows in groups.items():
-                await self._write_batch(
-                    self._resolve_db_path(log_type, date), log_type, sql, rows
-                )
+                await self._write_batch(self._resolve_db_path(log_type, date), log_type, sql, rows)
         else:
             rows = [r for item in batch if (r := self._extract_row(log_type, item))]
             if rows:
-                await self._write_batch(
-                    self._resolve_db_path(log_type), log_type, sql, rows
-                )
+                await self._write_batch(self._resolve_db_path(log_type), log_type, sql, rows)
 
     async def _flush_all(self):
         for t in self._queues:
             try:
                 await self._flush_type(t)
             except Exception as e:
-                log.warning(f"[{self._log_tag}] 刷写失败 [{t}]: {e}")
+                log.warning(f'[{self._log_tag}] 刷写失败 [{t}]: {e}')
 
     async def _periodic_flush(self):
         while not self._stop.is_set():
             try:
-                await asyncio.wait_for(
-                    self._stop.wait(), timeout=max(self._interval, 1)
-                )
+                await asyncio.wait_for(self._stop.wait(), timeout=max(self._interval, 1))
             except TimeoutError:
                 pass
             except asyncio.CancelledError:
@@ -227,9 +219,7 @@ class _BaseLogService:
     async def _cleanup_expired(self):
         if self._retention_days <= 0:
             return
-        cutoff = (datetime.now() - timedelta(days=self._retention_days)).strftime(
-            "%Y-%m-%d"
-        )
+        cutoff = (datetime.now() - timedelta(days=self._retention_days)).strftime('%Y-%m-%d')
         loop = asyncio.get_running_loop()
         removed = 0
         try:
@@ -247,18 +237,18 @@ class _BaseLogService:
                 await loop.run_in_executor(None, shutil.rmtree, path, True)
                 removed += 1
         except Exception as e:
-            log.warning(f"[{self._log_tag}] 清理目录异常: {e}")
+            log.warning(f'[{self._log_tag}] 清理目录异常: {e}')
         if removed:
-            log.info(f"[{self._log_tag}] 已清理 {removed} 个过期日志目录")
+            log.info(f'[{self._log_tag}] 已清理 {removed} 个过期日志目录')
 
     def _close_stale_conns(self):
         """关闭非当天 daily 日志的数据库连接, 释放资源"""
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().strftime('%Y-%m-%d')
         with self._init_lock:
             to_close = []
             for db_path in list(self._conns):
                 parent = os.path.basename(os.path.dirname(db_path))
-                if parent != today and re.fullmatch(r"\d{4}-\d{2}-\d{2}", parent):
+                if parent != today and re.fullmatch(r'\d{4}-\d{2}-\d{2}', parent):
                     to_close.append(db_path)
             for db_path in to_close:
                 conn = self._conns.pop(db_path, None)
@@ -268,7 +258,7 @@ class _BaseLogService:
                     with contextlib.suppress(Exception):
                         conn.close()
         if to_close:
-            log.debug(f"[{self._log_tag}] 已关闭 {len(to_close)} 个过期 daily 连接")
+            log.debug(f'[{self._log_tag}] 已关闭 {len(to_close)} 个过期 daily 连接')
 
     async def _periodic_cleanup(self):
         while not self._stop.is_set():
@@ -278,9 +268,7 @@ class _BaseLogService:
                 if now >= target:
                     target += timedelta(days=1)
                 try:
-                    await asyncio.wait_for(
-                        self._stop.wait(), timeout=(target - now).total_seconds()
-                    )
+                    await asyncio.wait_for(self._stop.wait(), timeout=(target - now).total_seconds())
                     break
                 except TimeoutError:
                     pass
@@ -289,7 +277,7 @@ class _BaseLogService:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                log.warning(f"[{self._log_tag}] 清理异常: {e}")
+                log.warning(f'[{self._log_tag}] 清理异常: {e}')
                 await asyncio.sleep(3600)
 
     async def _start_tasks(self):

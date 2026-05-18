@@ -9,8 +9,8 @@ import time
 
 from aiohttp import web
 
-_IS_WINDOWS = platform.system().lower() == "windows"
-_base_dir = ""
+_IS_WINDOWS = platform.system().lower() == 'windows'
+_base_dir = ''
 
 
 def set_context(base_dir: str):
@@ -57,14 +57,14 @@ if __name__ == "__main__":
 
 
 async def handle_restart(request: web.Request):
-    main_py = os.path.join(_base_dir, "main.py")
+    main_py = os.path.join(_base_dir, 'main.py')
     if not os.path.exists(main_py):
-        return web.json_response({"success": False, "error": "main.py 不存在"})
+        return web.json_response({'success': False, 'error': 'main.py 不存在'})
 
     from core.base.config import cfg
 
-    port = cfg.get("settings", "server.port", 5001)
-    restarter = os.path.join(_base_dir, "bot_restarter.py")
+    port = cfg.get('settings', 'server.port', 5001)
+    restarter = os.path.join(_base_dir, 'bot_restarter.py')
 
     try:
         if _IS_WINDOWS:
@@ -72,7 +72,7 @@ async def handle_restart(request: web.Request):
         else:
             script = _UNIX_TEMPLATE.format(main_py=main_py, port=port)
 
-        with open(restarter, "w", encoding="utf-8") as f:
+        with open(restarter, 'w', encoding='utf-8') as f:
             f.write(script)
 
         if _IS_WINDOWS:
@@ -81,13 +81,9 @@ async def handle_restart(request: web.Request):
                 cwd=_base_dir,
                 creationflags=subprocess.CREATE_NEW_CONSOLE,
             )
-            threading.Thread(
-                target=lambda: (time.sleep(1), os._exit(0)), daemon=True
-            ).start()
+            threading.Thread(target=lambda: (time.sleep(1), os._exit(0)), daemon=True).start()
         else:
-            subprocess.Popen(
-                [sys.executable, restarter], cwd=_base_dir, start_new_session=True
-            )
-        return web.json_response({"success": True, "message": "正在重启..."})
+            subprocess.Popen([sys.executable, restarter], cwd=_base_dir, start_new_session=True)
+        return web.json_response({'success': True, 'message': '正在重启...'})
     except Exception as e:
-        return web.json_response({"success": False, "error": str(e)})
+        return web.json_response({'success': False, 'error': str(e)})

@@ -6,7 +6,7 @@ from aiohttp import web
 
 from core.base.config import cfg
 
-log = logging.getLogger("ElainaBot.http_server")
+log = logging.getLogger('ElainaBot.http_server')
 
 
 class HttpServer:
@@ -27,8 +27,8 @@ class HttpServer:
         self._app = web.Application(client_max_size=20 * 1024 * 1024)
 
         # 核心路由
-        self._app.router.add_post("/", self._bot_manager._handle_webhook)
-        self._app.router.add_get("/health", self._bot_manager._handle_health)
+        self._app.router.add_post('/', self._bot_manager._handle_webhook)
+        self._app.router.add_get('/health', self._bot_manager._handle_health)
 
         return self._app
 
@@ -43,21 +43,21 @@ class HttpServer:
 
             setup_web(self._app, self._bot_manager, self._base_dir)
         except Exception as e:
-            log.warning(f"Web 面板加载失败: {e}")
+            log.warning(f'Web 面板加载失败: {e}')
 
         # 抑制 aiohttp BadStatusLine 日志噪音
         class _BadStatusLineFilter(logging.Filter):
             def filter(self, record):
-                return "BadStatusLine" not in record.getMessage()
+                return 'BadStatusLine' not in record.getMessage()
 
-        logging.getLogger("aiohttp.server").addFilter(_BadStatusLineFilter())
+        logging.getLogger('aiohttp.server').addFilter(_BadStatusLineFilter())
 
-        host = cfg.get("settings", "server.host", "0.0.0.0")
-        port = cfg.get("settings", "server.port", 5200)
+        host = cfg.get('settings', 'server.host', '0.0.0.0')
+        port = cfg.get('settings', 'server.port', 5200)
         self._runner = web.AppRunner(self._app)
         await self._runner.setup()
         await web.TCPSite(self._runner, host, port).start()
-        log.info(f"HTTP 服务器已启动: {host}:{port}")
+        log.info(f'HTTP 服务器已启动: {host}:{port}')
 
     async def shutdown(self, timeout: float = 5):
         """关闭 HTTP 服务器"""

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from core.base.config import cfg
 
-log = logging.getLogger("ElainaBot.scheduler")
+log = logging.getLogger('ElainaBot.scheduler')
 
 
 class RestartScheduler:
@@ -18,36 +18,36 @@ class RestartScheduler:
 
     async def __call__(self):
         """可直接作为 asyncio.create_task() 的协程"""
-        restart_cfg = cfg.get("settings", "restart") or {}
-        if not restart_cfg.get("enabled", False):
+        restart_cfg = cfg.get('settings', 'restart') or {}
+        if not restart_cfg.get('enabled', False):
             return
 
-        mode = restart_cfg.get("mode", "daily")
+        mode = restart_cfg.get('mode', 'daily')
         now = datetime.now()
 
-        if mode == "daily":
-            time_str = str(restart_cfg.get("daily_time", "04:00"))
-            parts = time_str.split(":")
+        if mode == 'daily':
+            time_str = str(restart_cfg.get('daily_time', '04:00'))
+            parts = time_str.split(':')
             h, m = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
             target = now.replace(hour=h, minute=m, second=0, microsecond=0)
             if now >= target:
                 target += timedelta(days=1)
             wait_secs = (target - now).total_seconds()
-        elif mode == "interval":
-            hours = float(restart_cfg.get("interval_hours", 24))
+        elif mode == 'interval':
+            hours = float(restart_cfg.get('interval_hours', 24))
             wait_secs = hours * 3600
             target = now + timedelta(seconds=wait_secs)
         else:
             return
 
-        log.info(f"定时重启: {target.strftime('%m-%d %H:%M')}")
+        log.info(f'定时重启: {target.strftime("%m-%d %H:%M")}')
 
         try:
             await asyncio.sleep(wait_secs)
         except asyncio.CancelledError:
             return
 
-        log.info("定时重启触发")
+        log.info('定时重启触发')
         if self._on_restart:
             self._on_restart()
 

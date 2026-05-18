@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from core.base.logger import FRAMEWORK, get_logger
 
-log = get_logger(FRAMEWORK, "Hook")
+log = get_logger(FRAMEWORK, 'Hook')
 
 
 def _make_callback(cb, args, kwargs):
@@ -20,17 +20,15 @@ def _make_callback(cb, args, kwargs):
 class HookManager:
     """通用 Hook 管理器 (全局单例, 任意字符串作为 hook 名称)"""
 
-    __slots__ = ("_hooks", "_sorted")
+    __slots__ = ('_hooks', '_sorted')
 
     def __init__(self):
         self._hooks = defaultdict(list)  # {name: [(pri, owner, cb, is_coro)]}
         self._sorted = {}
 
-    def register(self, hook_name, callback, *, owner="unknown", priority=100):
+    def register(self, hook_name, callback, *, owner='unknown', priority=100):
         """注册 hook 回调 (priority 越小越先执行)"""
-        self._hooks[hook_name].append(
-            (priority, owner, callback, asyncio.iscoroutinefunction(callback))
-        )
+        self._hooks[hook_name].append((priority, owner, callback, asyncio.iscoroutinefunction(callback)))
         self._sorted.pop(hook_name, None)
 
     def unregister(self, hook_name, callback):
@@ -81,11 +79,7 @@ class HookManager:
         loop = asyncio.get_running_loop()
         for _, owner, cb, is_coro in self._get_sorted(hook_name):
             try:
-                data = (
-                    await cb(data)
-                    if is_coro
-                    else await loop.run_in_executor(None, cb, data)
-                )
+                data = await cb(data) if is_coro else await loop.run_in_executor(None, cb, data)
                 if data is None:
                     return None
             except Exception as e:
@@ -98,11 +92,7 @@ class HookManager:
 
     def list_hooks(self):
         """列出所有已注册 hook"""
-        return {
-            name: [{"owner": e[1], "priority": e[0]} for e in self._get_sorted(name)]
-            for name, entries in self._hooks.items()
-            if entries
-        }
+        return {name: [{'owner': e[1], 'priority': e[0]} for e in self._get_sorted(name)] for name, entries in self._hooks.items() if entries}
 
     def clear(self):
         self._hooks.clear()

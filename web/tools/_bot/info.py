@@ -9,13 +9,14 @@ _SSL_CTX = ssl.create_default_context()
 _SSL_CTX.check_hostname = False
 _SSL_CTX.verify_mode = ssl.CERT_NONE
 
-_API_URL = "https://qun.qq.com/qunpro/robot/proxy/domain/qun.qq.com/cgi-bin/group_pro/robot/manager/share_info?bkn=508459323&robot_appid={}"
-_QR_API = "https://api.2dcode.biz/v1/create-qr-code?data={}"
-_SHARE_URL = "https://qun.qq.com/qunpro/robot/qunshare?robot_uin={}"
-_CHANNEL_URL = "https://qun.qq.com/qunpro/robot/share?robot_appid={}"
+_API_URL = 'https://qun.qq.com/qunpro/robot/proxy/domain/qun.qq.com/cgi-bin/group_pro/robot/manager/share_info?bkn=508459323&robot_appid={}'
+_QR_API = 'https://api.2dcode.biz/v1/create-qr-code?data={}'
+_SHARE_URL = 'https://qun.qq.com/qunpro/robot/qunshare?robot_uin={}'
+_CHANNEL_URL = 'https://qun.qq.com/qunpro/robot/share?robot_appid={}'
 _HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 15; wv) AppleWebKit/537.36 Chrome/135.0 Mobile Safari/537.36 QQ/9.1.75',
-    'qname-service': '976321:131072', 'qname-space': 'Production'
+    'qname-service': '976321:131072',
+    'qname-space': 'Production',
 }
 
 _bot_manager = None
@@ -40,21 +41,29 @@ async def handle_get_robot_info(request: web.Request):
     conn_type = 'Webhook' if is_webhook else 'WebSocket'
     conn_status = '已连接' if ws_connected else ('等待接收中' if is_webhook else '未连接')
     channel_url = _CHANNEL_URL.format(appid)
-    _qr = lambda u: '/api/robot/qrcode?url=' + urllib.parse.quote(u, safe='')
+
+    def _qr(u):
+        return '/api/robot/qrcode?url=' + urllib.parse.quote(u, safe='')
+
     webhook_url = ''
     if is_webhook:
         from core.base.config import cfg
+
         host = cfg.get('settings', 'server.host', '0.0.0.0')
         port = cfg.get('settings', 'server.port', 5200)
         display_host = request.host.split(':')[0] if request.host else host
         webhook_url = f'http://{display_host}:{port}/?appid={appid}'
     base = {
-        'appid': appid, 'qq': robot_qq, 'link': share_url,
-        'connection_type': conn_type, 'connection_status': conn_status,
+        'appid': appid,
+        'qq': robot_qq,
+        'link': share_url,
+        'connection_type': conn_type,
+        'connection_status': conn_status,
         'webhook_url': webhook_url,
         'webhook_port': port if is_webhook else '',
         'qr_code_api': _qr(share_url),
-        'channel_link': channel_url, 'channel_qr_code_api': _qr(channel_url),
+        'channel_link': channel_url,
+        'channel_qr_code_api': _qr(channel_url),
     }
 
     try:
@@ -71,21 +80,32 @@ async def handle_get_robot_info(request: web.Request):
         if avatar and 'myqcloud.com' in avatar:
             avatar += ('&' if '?' in avatar else '?') + 'imageMogr2/format/png'
 
-        return web.json_response({**base, 'success': True,
-            'qq': robot.get('robot_uin', robot_qq),
-            'name': robot.get('robot_name', '未知机器人'),
-            'description': robot.get('robot_desc', '暂无描述'),
-            'avatar': avatar, 'appid': robot.get('appid', appid),
-            'developer': robot.get('create_name', '未知'),
-            'status': '正常' if robot.get('robot_offline', 1) == 0 else '离线',
-            'data_source': 'api',
-            'is_banned': robot.get('robot_ban', False),
-            'commands_count': len(commands),
-        })
+        return web.json_response(
+            {
+                **base,
+                'success': True,
+                'qq': robot.get('robot_uin', robot_qq),
+                'name': robot.get('robot_name', '未知机器人'),
+                'description': robot.get('robot_desc', '暂无描述'),
+                'avatar': avatar,
+                'appid': robot.get('appid', appid),
+                'developer': robot.get('create_name', '未知'),
+                'status': '正常' if robot.get('robot_offline', 1) == 0 else '离线',
+                'data_source': 'api',
+                'is_banned': robot.get('robot_ban', False),
+                'commands_count': len(commands),
+            }
+        )
     except Exception as e:
-        return web.json_response({**base, 'success': False, 'error': str(e),
-            'name': '加载失败', 'data_source': 'fallback',
-        })
+        return web.json_response(
+            {
+                **base,
+                'success': False,
+                'error': str(e),
+                'name': '加载失败',
+                'data_source': 'fallback',
+            }
+        )
 
 
 async def handle_get_robot_qrcode(request: web.Request):
@@ -97,7 +117,6 @@ async def handle_get_robot_qrcode(request: web.Request):
         async with _aiohttp.ClientSession() as session:
             async with session.get(qr_url, ssl=_SSL_CTX, timeout=_aiohttp.ClientTimeout(total=10)) as resp:
                 data = await resp.read()
-                return web.Response(body=data, content_type='image/png',
-                                    headers={'Cache-Control': 'public, max-age=3600'})
+                return web.Response(body=data, content_type='image/png', headers={'Cache-Control': 'public, max-age=3600'})
     except Exception as e:
         return web.json_response({'success': False, 'error': str(e)}, status=500)

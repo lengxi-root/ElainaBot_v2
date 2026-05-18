@@ -18,7 +18,7 @@ from core.storage._schema import (
 from core.storage.share import ShareMixin
 from core.storage.wakeup import WakeupMixin
 
-log = get_logger(SERVICE, "日志")
+log = get_logger(SERVICE, '日志')
 
 
 class LogService(_BaseLogService, ShareMixin, WakeupMixin):
@@ -61,7 +61,7 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
         with contextlib.suppress(ValueError):
             LogService._all_instances.remove(self)
         await self._shutdown_base()
-        log.info(f"[{self._appid}] 日志服务已关闭")
+        log.info(f'[{self._appid}] 日志服务已关闭')
 
     async def add(self, log_type, data):
         """添加日志条目到队列 (队列满时丢弃, 不阻塞)"""
@@ -72,59 +72,55 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
         except asyncio.QueueFull:
             return False
         # DAU 立即刷写 (异步后台, 不阻塞调用方)
-        if log_type == "dau":
-            asyncio.create_task(self._flush_type("dau"))
+        if log_type == 'dau':
+            asyncio.create_task(self._flush_type('dau'))
         return True
 
     def query_data(self, sql, params=()):
         """同步查询 data.db (users/groups/members 表)"""
-        return self.query("data", sql, params)
+        return self.query('data', sql, params)
 
     def _extract_row(self, log_type, data):
         """dict → INSERT 参数元组"""
-        ts = data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        if log_type == "message":
+        ts = data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        if log_type == 'message':
             return (
                 ts,
-                data.get("type", ""),
-                data.get("message_id", ""),
-                data.get("user_id", ""),
-                data.get("group_id", ""),
-                data.get("content", ""),
-                data.get("raw_message", ""),
-                data.get("plugin_name", ""),
-                data.get("direction", ""),
+                data.get('type', ''),
+                data.get('message_id', ''),
+                data.get('user_id', ''),
+                data.get('group_id', ''),
+                data.get('content', ''),
+                data.get('raw_message', ''),
+                data.get('plugin_name', ''),
+                data.get('direction', ''),
             )
         common = self._extract_common_row(log_type, data, ts)
         if common:
             return common
-        if log_type == "dau":
+        if log_type == 'dau':
             return (
-                data.get("date", datetime.now().strftime("%Y-%m-%d")),
-                data.get("active_users", 0),
-                data.get("active_groups", 0),
-                data.get("total_messages", 0),
-                data.get("private_messages", 0),
-                data.get("group_join_count", 0),
-                data.get("group_leave_count", 0),
-                data.get("friend_add_count", 0),
-                data.get("friend_remove_count", 0),
-                _json_field(data, "message_stats_detail"),
-                _json_field(data, "user_stats_detail"),
-                _json_field(data, "command_stats_detail"),
+                data.get('date', datetime.now().strftime('%Y-%m-%d')),
+                data.get('active_users', 0),
+                data.get('active_groups', 0),
+                data.get('total_messages', 0),
+                data.get('private_messages', 0),
+                data.get('group_join_count', 0),
+                data.get('group_leave_count', 0),
+                data.get('friend_add_count', 0),
+                data.get('friend_remove_count', 0),
+                _json_field(data, 'message_stats_detail'),
+                _json_field(data, 'user_stats_detail'),
+                _json_field(data, 'command_stats_detail'),
             )
-        if log_type == "lifecycle":
-            extra = {
-                k: v
-                for k, v in data.items()
-                if k not in ("timestamp", "type", "user_id", "group_id")
-            }
+        if log_type == 'lifecycle':
+            extra = {k: v for k, v in data.items() if k not in ('timestamp', 'type', 'user_id', 'group_id')}
             return (
                 ts,
-                data.get("type", ""),
-                data.get("user_id", ""),
-                data.get("group_id", ""),
-                json.dumps(extra, ensure_ascii=False) if extra else "",
+                data.get('type', ''),
+                data.get('user_id', ''),
+                data.get('group_id', ''),
+                json.dumps(extra, ensure_ascii=False) if extra else '',
             )
         return None
 
@@ -160,17 +156,17 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
                     conn.execute(sql, params)
                 conn.commit()
         except Exception as e:
-            log.error(f"[{self._appid}] data.db 批量写入失败: {e}")
+            log.error(f'[{self._appid}] data.db 批量写入失败: {e}')
             with contextlib.suppress(Exception):
                 conn.rollback()
 
     @property
     def _data_conn(self):
-        return self._get_conn(self._resolve_db_path("data"), "data")
+        return self._get_conn(self._resolve_db_path('data'), 'data')
 
     @property
     def _data_lock(self):
-        return self._conn_locks.get(self._resolve_db_path("data"))
+        return self._conn_locks.get(self._resolve_db_path('data'))
 
     async def db_execute(self, sql, params=()):
         """执行写操作, 返回 lastrowid"""
@@ -185,9 +181,7 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
 
     async def db_execute_many(self, sql, params_list):
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            None, self._db_execute_many_sync, sql, params_list
-        )
+        return await loop.run_in_executor(None, self._db_execute_many_sync, sql, params_list)
 
     def _db_execute_many_sync(self, sql, params_list):
         with self._data_lock:
@@ -233,16 +227,16 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
         """INSERT OR UPDATE"""
         columns = list(data.keys())
         values = list(data.values())
-        placeholders = ",".join(["?"] * len(columns))
-        col_str = ",".join(columns)
+        placeholders = ','.join(['?'] * len(columns))
+        col_str = ','.join(columns)
         update_cols = [c for c in columns if c not in conflict_columns]
-        conflict_str = ",".join(conflict_columns)
-        sql = f"INSERT INTO {table} ({col_str}) VALUES ({placeholders})"
+        conflict_str = ','.join(conflict_columns)
+        sql = f'INSERT INTO {table} ({col_str}) VALUES ({placeholders})'
         if update_cols:
-            update_str = ",".join(f"{c}=excluded.{c}" for c in update_cols)
-            sql += f" ON CONFLICT({conflict_str}) DO UPDATE SET {update_str}"
+            update_str = ','.join(f'{c}=excluded.{c}' for c in update_cols)
+            sql += f' ON CONFLICT({conflict_str}) DO UPDATE SET {update_str}'
         else:
-            sql += f" ON CONFLICT({conflict_str}) DO NOTHING"
+            sql += f' ON CONFLICT({conflict_str}) DO NOTHING'
         return await self.db_execute(sql, values)
 
     async def db_table_exists(self, table_name):
@@ -255,12 +249,12 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
     @staticmethod
     def _global_error_dispatch(error_data):
         if SharedLogService._instance:
-            SharedLogService._instance.add_sync("error", error_data)
+            SharedLogService._instance.add_sync('error', error_data)
 
     @staticmethod
     def _global_framework_dispatch(log_data):
         if SharedLogService._instance:
-            SharedLogService._instance.add_sync("framework", log_data)
+            SharedLogService._instance.add_sync('framework', log_data)
 
 
 # ==================== 通用日志服务 (框架+错误, 不分机器人) ====================
@@ -278,9 +272,9 @@ class SharedLogService(_BaseLogService):
             insert_interval,
             0,
             retention_days,
-            ("framework", "error"),
+            ('framework', 'error'),
         )
-        self._log_tag = "通用日志"
+        self._log_tag = '通用日志'
 
     async def start(self):
         SharedLogService._instance = self
@@ -289,8 +283,8 @@ class SharedLogService(_BaseLogService):
     async def shutdown(self):
         SharedLogService._instance = None
         await self._shutdown_base()
-        log.info("[通用日志] 已关闭")
+        log.info('[通用日志] 已关闭')
 
     def _extract_row(self, log_type, data):
-        ts = data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        ts = data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         return self._extract_common_row(log_type, data, ts)

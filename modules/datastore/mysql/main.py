@@ -6,36 +6,36 @@
 """
 
 _DEFAULTS = {
-    "host": "127.0.0.1",
-    "port": 3306,
-    "user": "root",
-    "password": "",
-    "database": "",
-    "charset": "utf8mb4",
-    "minsize": 2,
-    "maxsize": 20,
-    "connect_timeout": 10,
-    "autocommit": True,
+    'host': '127.0.0.1',
+    'port': 3306,
+    'user': 'root',
+    'password': '',
+    'database': '',
+    'charset': 'utf8mb4',
+    'minsize': 2,
+    'maxsize': 20,
+    'connect_timeout': 10,
+    'autocommit': True,
 }
 
 _COMMENTS = {
-    "host": "MySQL 服务器地址",
-    "port": "MySQL 端口号",
-    "user": "数据库用户名",
-    "password": "数据库密码, 无密码留空",
-    "database": "数据库名称 (必填)",
-    "charset": "字符集编码",
-    "minsize": "连接池最小连接数",
-    "maxsize": "连接池最大连接数",
-    "connect_timeout": "连接超时 (秒)",
-    "autocommit": "是否自动提交事务",
+    'host': 'MySQL 服务器地址',
+    'port': 'MySQL 端口号',
+    'user': '数据库用户名',
+    'password': '数据库密码, 无密码留空',
+    'database': '数据库名称 (必填)',
+    'charset': '字符集编码',
+    'minsize': '连接池最小连接数',
+    'maxsize': '连接池最大连接数',
+    'connect_timeout': '连接超时 (秒)',
+    'autocommit': '是否自动提交事务',
 }
 
 
 class MySQLPool:
     """MySQL 异步连接池封装"""
 
-    __slots__ = ("_cfg", "_pool", "_available", "_log")
+    __slots__ = ('_cfg', '_pool', '_available', '_log')
 
     def __init__(self, cfg, log):
         self._cfg = cfg
@@ -47,27 +47,27 @@ class MySQLPool:
         try:
             import aiomysql
         except ImportError:
-            self._log.error("aiomysql 未安装, MySQL 连接池禁用 (pip install aiomysql)")
+            self._log.error('aiomysql 未安装, MySQL 连接池禁用 (pip install aiomysql)')
             return
-        if not self._cfg.get("database"):
-            self._log.warning("未配置 database, 跳过 MySQL 初始化")
+        if not self._cfg.get('database'):
+            self._log.warning('未配置 database, 跳过 MySQL 初始化')
             return
         try:
             self._pool = await aiomysql.create_pool(
-                host=self._cfg.get("host", "127.0.0.1"),
-                port=int(self._cfg.get("port", 3306)),
-                user=self._cfg.get("user", "root"),
-                password=str(self._cfg.get("password", "")),
-                db=self._cfg.get("database"),
-                charset=self._cfg.get("charset", "utf8mb4"),
-                minsize=int(self._cfg.get("minsize", 2)),
-                maxsize=int(self._cfg.get("maxsize", 20)),
-                connect_timeout=int(self._cfg.get("connect_timeout", 10)),
-                autocommit=bool(self._cfg.get("autocommit", True)),
+                host=self._cfg.get('host', '127.0.0.1'),
+                port=int(self._cfg.get('port', 3306)),
+                user=self._cfg.get('user', 'root'),
+                password=str(self._cfg.get('password', '')),
+                db=self._cfg.get('database'),
+                charset=self._cfg.get('charset', 'utf8mb4'),
+                minsize=int(self._cfg.get('minsize', 2)),
+                maxsize=int(self._cfg.get('maxsize', 20)),
+                connect_timeout=int(self._cfg.get('connect_timeout', 10)),
+                autocommit=bool(self._cfg.get('autocommit', True)),
             )
             self._available = True
         except Exception as e:
-            self._log.error(f"MySQL 初始化失败: {e}")
+            self._log.error(f'MySQL 初始化失败: {e}')
             self._available = False
 
     def is_available(self):
@@ -85,7 +85,7 @@ class MySQLPool:
     def acquire(self):
         """获取连接 (用作 async with pool.acquire() as conn)"""
         if not self.is_available():
-            raise RuntimeError("MySQL 连接池不可用")
+            raise RuntimeError('MySQL 连接池不可用')
         return self._pool.acquire()
 
     # ---------- 便捷方法 ----------
@@ -95,12 +95,12 @@ class MySQLPool:
         if not self.is_available():
             return 0
         async with self._pool.acquire() as conn, conn.cursor() as cur:
-            is_ddl = sql.lstrip()[:6].upper() in ("CREATE", "ALTER ", "DROP T")
+            is_ddl = sql.lstrip()[:6].upper() in ('CREATE', 'ALTER ', 'DROP T')
             if is_ddl:
-                await cur.execute("SET sql_notes=0")
+                await cur.execute('SET sql_notes=0')
             rows = await cur.execute(sql, params)
             if is_ddl:
-                await cur.execute("SET sql_notes=1")
+                await cur.execute('SET sql_notes=1')
             if not conn.get_autocommit():
                 await conn.commit()
             return rows
@@ -155,22 +155,21 @@ class MySQLPool:
         if not self.is_available() or not data:
             return 0
         cols = list(data.keys())
-        placeholders = ", ".join(["%s"] * len(cols))
+        placeholders = ', '.join(['%s'] * len(cols))
         update_cols = [c for c in cols if c not in conflict_columns]
-        sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders}) AS new"
+        sql = f'INSERT INTO {table} ({", ".join(cols)}) VALUES ({placeholders}) AS new'
         if update_cols:
-            update_clause = ", ".join(f"{c}=new.{c}" for c in update_cols)
-            sql += f" ON DUPLICATE KEY UPDATE {update_clause}"
+            update_clause = ', '.join(f'{c}=new.{c}' for c in update_cols)
+            sql += f' ON DUPLICATE KEY UPDATE {update_clause}'
         return await self.execute(sql, list(data.values()))
 
     async def table_exists(self, table_name):
         """检查表是否存在"""
         row = await self.fetch_one(
-            "SELECT COUNT(*) AS c FROM information_schema.tables "
-            "WHERE table_schema=DATABASE() AND table_name=%s",
+            'SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name=%s',
             (table_name,),
         )
-        return bool(row and row.get("c"))
+        return bool(row and row.get('c'))
 
     async def execute_transaction(self, sql_list):
         """执行事务 (列表中每项为 {'sql': ..., 'params': ...})"""
@@ -181,9 +180,9 @@ class MySQLPool:
             try:
                 async with conn.cursor() as cur:
                     for item in sql_list:
-                        sql = item.get("sql")
+                        sql = item.get('sql')
                         if sql:
-                            await cur.execute(sql, item.get("params"))
+                            await cur.execute(sql, item.get('params'))
                 await conn.commit()
                 return True
             except Exception:

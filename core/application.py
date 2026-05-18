@@ -18,13 +18,13 @@ from core.services.scheduler import RestartScheduler
 from core.storage.dau import DAUService
 from core.storage.log import SharedLogService
 
-log = get_logger(SYSTEM, "启动器")
+log = get_logger(SYSTEM, '启动器')
 
 # 全局应用实例 (由 start() 设置)
-_app: "Application | None" = None
+_app: 'Application | None' = None
 
 
-def get_app() -> "Application | None":
+def get_app() -> 'Application | None':
     """获取当前运行的 Application 实例 (线程安全)"""
     return _app
 
@@ -52,8 +52,8 @@ class Application(EventHandlerMixin):
 
         # 状态
         self._web_log_cb = None
-        self._log_base = ""
-        self._media_dir = ""
+        self._log_base = ''
+        self._media_dir = ''
         self._stop_event = None
         self._restart_requested = False
 
@@ -95,27 +95,25 @@ class Application(EventHandlerMixin):
         _app = self
 
         # 1) 初始化配置
-        cfg.init(self._path("config"))
+        cfg.init(self._path('config'))
 
-        fw_name = cfg.get("settings", "web.framework_name", "ElainaBot")
+        fw_name = cfg.get('settings', 'web.framework_name', 'ElainaBot')
         setup_logger(framework_name=fw_name)
-        log.info(f"{'=' * 5} {fw_name} 启动中 {'=' * 5}")
+        log.info(f'{"=" * 5} {fw_name} 启动中 {"=" * 5}')
 
         bot_configs = cfg.get_bot_configs()
-        valid_bots = [b for b in bot_configs if b.get("appid") and b.get("secret")]
+        valid_bots = [b for b in bot_configs if b.get('appid') and b.get('secret')]
         if not valid_bots:
-            log.warning("未配置有效的机器人, 仅启动 Web 面板")
+            log.warning('未配置有效的机器人, 仅启动 Web 面板')
             # 输出诊断信息: 哪个 bot 配置缺失了哪些字段
             for b in bot_configs:
                 missing = []
-                if not b.get("appid"):
-                    missing.append("appid")
-                if not b.get("secret"):
-                    missing.append("secret (请通过 Web 面板配置)")
+                if not b.get('appid'):
+                    missing.append('appid')
+                if not b.get('secret'):
+                    missing.append('secret (请通过 Web 面板配置)')
                 if missing:
-                    log.warning(
-                        f"  bot 配置不完整: {b.get('appid', '?')} — 缺失 {', '.join(missing)}"
-                    )
+                    log.warning(f'  bot 配置不完整: {b.get("appid", "?")} — 缺失 {", ".join(missing)}')
 
         # 2) HTTP 应用
         from core.server.http_server import HttpServer
@@ -124,28 +122,28 @@ class Application(EventHandlerMixin):
         self._http_server.init_app()
 
         # 3) Module 管理器
-        self._module_manager = ModuleManager(self._path("modules"), self._hook_manager)
+        self._module_manager = ModuleManager(self._path('modules'), self._hook_manager)
         self._module_manager.discover()
         await self._module_manager.start_enabled()
 
         # 4) Plugin 管理器
-        self._plugin_manager = PluginManager(self._path("plugins"))
+        self._plugin_manager = PluginManager(self._path('plugins'))
         await self._plugin_manager.load_all()
         self._plugin_manager.start_watcher()
 
         # 5) 日志服务
-        log_base = self._path("data", cfg.get("settings", "logging.dir", "log"))
-        log_cfg = cfg.get("settings", "logging") or {}
+        log_base = self._path('data', cfg.get('settings', 'logging.dir', 'log'))
+        log_cfg = cfg.get('settings', 'logging') or {}
         self._shared_log = SharedLogService(
             base_dir=log_base,
-            wal_mode=log_cfg.get("wal_mode", True),
-            insert_interval=log_cfg.get("insert_interval", 2),
-            retention_days=log_cfg.get("retention_days", 5),
+            wal_mode=log_cfg.get('wal_mode', True),
+            insert_interval=log_cfg.get('insert_interval', 2),
+            retention_days=log_cfg.get('retention_days', 5),
         )
         await self._shared_log.start()
 
         self._log_base = log_base
-        self._media_dir = self._path("data", "media")
+        self._media_dir = self._path('data', 'media')
         os.makedirs(self._media_dir, exist_ok=True)
 
         # 6) Bot 注册表
@@ -157,7 +155,7 @@ class Application(EventHandlerMixin):
         if valid_bots:
             await self._bot_registry.start_all()
 
-        cfg.on_change("bot", self._bot_registry.on_config_change)
+        cfg.on_change('bot', self._bot_registry.on_config_change)
 
         # 7) DAU 统计
         self._dau_service = DAUService(log_base)
@@ -168,20 +166,15 @@ class Application(EventHandlerMixin):
 
         # 9) 后台服务
         self._config_watcher = ConfigWatcherService(interval=5.0)
-        self._media_cleanup = MediaCleanupService(
-            media_dir=self._media_dir, max_age_days=3, interval=3600
-        )
+        self._media_cleanup = MediaCleanupService(media_dir=self._media_dir, max_age_days=3, interval=3600)
         self._restart_scheduler = RestartScheduler(on_restart=self._trigger_restart)
 
         for svc in (self._config_watcher, self._media_cleanup, self._restart_scheduler):
             svc.start()
 
-        msg = (
-            f"✅ 启动完成: {len(self._bot_registry)} 个机器人, "
-            f"{self._plugin_manager.handler_count} 个命令处理器"
-        )
+        msg = f'✅ 启动完成: {len(self._bot_registry)} 个机器人, {self._plugin_manager.handler_count} 个命令处理器'
         log.info(msg)
-        self._push_web_log("framework", {"source": "启动器", "content": msg})
+        self._push_web_log('framework', {'source': '启动器', 'content': msg})
 
         self._stop_event = asyncio.Event()
         try:
@@ -195,7 +188,7 @@ class Application(EventHandlerMixin):
     # ===== 关闭 =====
 
     async def shutdown(self):
-        log.info("正在关闭...")
+        log.info('正在关闭...')
 
         if self._plugin_manager:
             self._plugin_manager.stop_watcher()
@@ -219,7 +212,7 @@ class Application(EventHandlerMixin):
         if self._http_server:
             await self._http_server.shutdown(timeout=5)
 
-        log.info("已关闭")
+        log.info('已关闭')
 
     # ===== Webhook / Health (桥接到 manager 兼容) =====
 
@@ -238,11 +231,9 @@ class Application(EventHandlerMixin):
 
         return web.json_response(
             {
-                "status": "ok",
-                "bots": len(self._bot_registry) if self._bot_registry else 0,
-                "plugins": self._plugin_manager.handler_count
-                if self._plugin_manager
-                else 0,
+                'status': 'ok',
+                'bots': len(self._bot_registry) if self._bot_registry else 0,
+                'plugins': self._plugin_manager.handler_count if self._plugin_manager else 0,
             }
         )
 
@@ -254,7 +245,7 @@ class Application(EventHandlerMixin):
                 self._web_log_cb(log_type, entry)
 
     def _trigger_restart(self):
-        self._push_web_log("framework", {"content": "⏰ 定时重启触发"})
+        self._push_web_log('framework', {'content': '⏰ 定时重启触发'})
         self._restart_requested = True
         if self._stop_event:
             self._stop_event.set()

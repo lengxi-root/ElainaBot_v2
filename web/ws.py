@@ -10,7 +10,7 @@ from aiohttp import WSMsgType, web
 
 import web.auth as auth
 
-log = logging.getLogger("ElainaBot.web.ws")
+log = logging.getLogger('ElainaBot.web.ws')
 
 
 # ==================== WSBroadcast ====================
@@ -38,9 +38,7 @@ class WSBroadcast:
         """向所有连接的面板客户端广播消息 (WS + SSE)"""
         if not self.has_clients():
             return
-        payload = json.dumps(
-            {"type": msg_type, "data": data}, ensure_ascii=False, default=str
-        )
+        payload = json.dumps({'type': msg_type, 'data': data}, ensure_ascii=False, default=str)
         # WebSocket
         dead = set()
         for ws in list(self._clients):
@@ -63,13 +61,13 @@ class WSBroadcast:
 
     def push_log(self, log_type: str, entry: dict):
         """实时推送日志到面板 (不缓存, 仅广播)"""
-        if "timestamp" not in entry:
-            entry["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.schedule_broadcast("new_log", {"log_type": log_type, **entry})
+        if 'timestamp' not in entry:
+            entry['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.schedule_broadcast('new_log', {'log_type': log_type, **entry})
 
     def push_system_info(self, data: dict):
         """推送系统信息更新"""
-        self.schedule_broadcast("system_info", data)
+        self.schedule_broadcast('system_info', data)
 
     def clear(self):
         """清理所有连接 (用于测试隔离)"""
@@ -118,18 +116,18 @@ def push_system_info(data: dict):
 async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     """WebSocket 端点: /ws/panel?token=xxx"""
     # 验证 token
-    token = request.query.get("token", "")
+    token = request.query.get('token', '')
     if not token or token not in auth.valid_sessions:
-        return web.Response(status=401, text="Unauthorized")
+        return web.Response(status=401, text='Unauthorized')
 
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
     _broadcast.clients.add(ws)
-    log.debug(f"面板 WebSocket 已连接 ({len(_broadcast.clients)} clients)")
+    log.debug(f'面板 WebSocket 已连接 ({len(_broadcast.clients)} clients)')
 
     try:
         # 通知前端已连接, 初始数据由前端通过 API 获取
-        await ws.send_json({"type": "init", "data": {}})
+        await ws.send_json({'type': 'init', 'data': {}})
 
         async for msg in ws:
             if msg.type == WSMsgType.TEXT:
@@ -142,7 +140,7 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
                 break
     finally:
         _broadcast.clients.discard(ws)
-        log.debug(f"面板 WebSocket 已断开 ({len(_broadcast.clients)} clients)")
+        log.debug(f'面板 WebSocket 已断开 ({len(_broadcast.clients)} clients)')
 
     return ws
 
@@ -161,21 +159,19 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
     当 WebSocket 因 Nginx 未配置 upgrade 等原因不可用时,
     前端自动降级到 SSE, 走普通 HTTP 无需特殊代理配置。
     """
-    token = request.query.get("token", "")
+    token = request.query.get('token', '')
     if not token or token not in auth.valid_sessions:
-        return web.Response(status=401, text="Unauthorized")
+        return web.Response(status=401, text='Unauthorized')
 
     resp = web.StreamResponse()
-    resp.headers["Content-Type"] = "text/event-stream"
-    resp.headers["Cache-Control"] = "no-cache"
-    resp.headers["X-Accel-Buffering"] = "no"  # 禁止 Nginx 缓冲
+    resp.headers['Content-Type'] = 'text/event-stream'
+    resp.headers['Cache-Control'] = 'no-cache'
+    resp.headers['X-Accel-Buffering'] = 'no'  # 禁止 Nginx 缓冲
     await resp.prepare(request)
 
     queue = asyncio.Queue(maxsize=256)
     _broadcast.sse_queues.add(queue)
-    log.debug(
-        f"SSE 客户端已连接 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})"
-    )
+    log.debug(f'SSE 客户端已连接 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})')
 
     try:
         # 发送初始连接确认
@@ -183,15 +179,13 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
         while True:
             try:
                 payload = await asyncio.wait_for(queue.get(), timeout=25)
-                await resp.write(f"data: {payload}\n\n".encode())
+                await resp.write(f'data: {payload}\n\n'.encode())
             except TimeoutError:
-                await resp.write(b": keepalive\n\n")
+                await resp.write(b': keepalive\n\n')
     except (asyncio.CancelledError, ConnectionResetError, Exception):
         pass
     finally:
         _broadcast.sse_queues.discard(queue)
-        log.debug(
-            f"SSE 客户端已断开 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})"
-        )
+        log.debug(f'SSE 客户端已断开 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})')
 
     return resp

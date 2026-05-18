@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from aiohttp import web
 
-log = logging.getLogger("ElainaBot.web.stats")
+log = logging.getLogger('ElainaBot.web.stats')
 
 _statistics_tasks = {}
 _task_results = {}
@@ -23,7 +23,7 @@ def set_context(bot_manager):
     _bot_manager = bot_manager
 
 
-def _iter_bots(appid_filter=""):
+def _iter_bots(appid_filter=''):
     """按 appid 过滤机器人迭代器; 空字符串=全部"""
     if not _bot_manager:
         return []
@@ -37,9 +37,9 @@ def _count_table(appid_filter, table):
     total = 0
     for _, inst in _iter_bots(appid_filter):
         try:
-            r = inst.log_service.query_data(f"SELECT COUNT(*) as c FROM {table}")
+            r = inst.log_service.query_data(f'SELECT COUNT(*) as c FROM {table}')
             if r:
-                total += r[0].get("c", 0)
+                total += r[0].get('c', 0)
         except Exception:
             pass
     return total
@@ -51,14 +51,14 @@ def _aggregate_hourly(appid_filter, date):
     for _, inst in _iter_bots(appid_filter):
         try:
             rows = inst.log_service.query(
-                "message",
-                "SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c FROM log GROUP BY hr",
+                'message',
+                'SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c FROM log GROUP BY hr',
                 date=date,
             )
             for r in rows:
-                h = r.get("hr", "")
+                h = r.get('hr', '')
                 if h:
-                    hourly[h] = hourly.get(h, 0) + r.get("c", 0)
+                    hourly[h] = hourly.get(h, 0) + r.get('c', 0)
         except Exception:
             pass
     return hourly
@@ -68,43 +68,39 @@ async def handle_get_statistics(request: web.Request):
     """获取统计数据 — SQLite 查询放到 executor, 不阻塞事件循环"""
     import time as _time
 
-    force = request.query.get("force_refresh", "false") == "true"
-    selected_date = request.query.get("date", "")
-    appid_filter = request.query.get("appid", "")
+    force = request.query.get('force_refresh', 'false') == 'true'
+    selected_date = request.query.get('date', '')
+    appid_filter = request.query.get('appid', '')
 
     cache_key = (selected_date, appid_filter)
     now = _time.time()
     if not force:
         cached = _stats_cache.get(cache_key)
         if cached and now - cached[0] < _CACHE_TTL:
-            return web.json_response({"success": True, "data": cached[1]})
+            return web.json_response({'success': True, 'data': cached[1]})
 
     try:
         loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(
-            None, _gather_stats, force, selected_date, appid_filter
-        )
+        data = await loop.run_in_executor(None, _gather_stats, force, selected_date, appid_filter)
         _stats_cache[cache_key] = (now, data)
-        return web.json_response({"success": True, "data": data})
+        return web.json_response({'success': True, 'data': data})
     except Exception as e:
-        return web.json_response({"success": False, "error": str(e)}, status=500)
+        return web.json_response({'success': False, 'error': str(e)}, status=500)
 
 
 async def handle_get_task_status(request: web.Request):
-    task_id = request.match_info.get("task_id", "")
+    task_id = request.match_info.get('task_id', '')
     if task_id not in _statistics_tasks:
-        return web.json_response({"success": False, "error": "任务不存在"}, status=404)
+        return web.json_response({'success': False, 'error': '任务不存在'}, status=404)
     task = _statistics_tasks[task_id].copy()
-    if task["status"] == "completed" and task_id in _task_results:
-        return web.json_response(
-            {"success": True, "data": _task_results[task_id], "task_info": task}
-        )
+    if task['status'] == 'completed' and task_id in _task_results:
+        return web.json_response({'success': True, 'data': _task_results[task_id], 'task_info': task})
     return web.json_response(
         {
-            "success": True,
-            "status": task["status"],
-            "progress": task.get("progress", 0),
-            "message": task.get("message", ""),
+            'success': True,
+            'status': task['status'],
+            'progress': task.get('progress', 0),
+            'message': task.get('message', ''),
         }
     )
 
@@ -113,21 +109,21 @@ async def handle_get_available_dates(request: web.Request):
     """返回有 DAU 数据的日期列表"""
     dates = [
         {
-            "value": "today",
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "display": "今日数据",
-            "is_today": True,
+            'value': 'today',
+            'date': datetime.now().strftime('%Y-%m-%d'),
+            'display': '今日数据',
+            'is_today': True,
         }
     ]
-    return web.json_response({"success": True, "dates": dates})
+    return web.json_response({'success': True, 'dates': dates})
 
 
 async def handle_get_chart_data(request: web.Request):
     """返回最近 N 天的折线图数据 — SQLite 查询放到 executor"""
     import time as _time
 
-    days = max(1, min(30, int(request.query.get("days", "7"))))
-    appid_filter = request.query.get("appid", "")
+    days = max(1, min(30, int(request.query.get('days', '7'))))
+    appid_filter = request.query.get('appid', '')
 
     cache_key = (days, appid_filter)
     now_ts = _time.time()
@@ -160,8 +156,8 @@ def _gather_chart_sync(days, appid_filter):
     today_date = datetime.now().date()
     for i in range(days - 1, -1, -1):
         d = today_date - timedelta(days=i)
-        date_str = d.strftime("%Y-%m-%d")
-        labels.append(d.strftime("%m-%d"))
+        date_str = d.strftime('%Y-%m-%d')
+        labels.append(d.strftime('%m-%d'))
 
         day_total = 0
         day_private = 0
@@ -178,8 +174,8 @@ def _gather_chart_sync(days, appid_filter):
                 # 今日: 实时读 message.db (合并查询, 一次扫表得到全部聚合)
                 try:
                     rows = inst.log_service.query(
-                        "message",
-                        "SELECT COUNT(*) as cnt, "
+                        'message',
+                        'SELECT COUNT(*) as cnt, '
                         "COUNT(CASE WHEN group_id = '' OR group_id = 'c2c' THEN 1 END) as priv, "
                         "COUNT(DISTINCT CASE WHEN user_id != '' THEN user_id END) as users, "
                         "COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c' THEN group_id END) as groups_ "
@@ -188,35 +184,27 @@ def _gather_chart_sync(days, appid_filter):
                     )
                     if rows:
                         r0 = rows[0]
-                        day_total += r0.get("cnt", 0)
-                        day_private += r0.get("priv", 0)
+                        day_total += r0.get('cnt', 0)
+                        day_private += r0.get('priv', 0)
                         # 用 range 作为占位 — set 只用于 len(), 不在意元素本身
-                        day_users.update(
-                            range(len(day_users), len(day_users) + r0.get("users", 0))
-                        )
-                        day_groups.update(
-                            range(
-                                len(day_groups), len(day_groups) + r0.get("groups_", 0)
-                            )
-                        )
+                        day_users.update(range(len(day_users), len(day_users) + r0.get('users', 0)))
+                        day_groups.update(range(len(day_groups), len(day_groups) + r0.get('groups_', 0)))
                 except Exception:
                     pass
             # 历史 / 事件: 从 dau.db
             try:
-                dau_rows = inst.log_service.query(
-                    "dau", "SELECT * FROM log WHERE date=?", (date_str,)
-                )
+                dau_rows = inst.log_service.query('dau', 'SELECT * FROM log WHERE date=?', (date_str,))
                 if dau_rows:
                     dd = dau_rows[0]
-                    day_join += dd.get("group_join_count", 0)
-                    day_leave += dd.get("group_leave_count", 0)
-                    day_fadd += dd.get("friend_add_count", 0)
-                    day_frem += dd.get("friend_remove_count", 0)
+                    day_join += dd.get('group_join_count', 0)
+                    day_leave += dd.get('group_leave_count', 0)
+                    day_fadd += dd.get('friend_add_count', 0)
+                    day_frem += dd.get('friend_remove_count', 0)
                     if not is_today:
-                        day_total += dd.get("total_messages", 0)
-                        day_private += dd.get("private_messages", 0)
-                        day_users.update(range(dd.get("active_users", 0)))
-                        day_groups.update(range(dd.get("active_groups", 0)))
+                        day_total += dd.get('total_messages', 0)
+                        day_private += dd.get('private_messages', 0)
+                        day_users.update(range(dd.get('active_users', 0)))
+                        day_groups.update(range(dd.get('active_groups', 0)))
             except Exception:
                 pass
 
@@ -231,35 +219,35 @@ def _gather_chart_sync(days, appid_filter):
         ev_friend_remove.append(day_frem)
 
     # 累计: 用户 / 群组 / 好友 (从 data.db)
-    total_u = _count_table(appid_filter, "users")
-    total_g = _count_table(appid_filter, "groups_users")
-    total_f = _count_table(appid_filter, "members")
+    total_u = _count_table(appid_filter, 'users')
+    total_g = _count_table(appid_filter, 'groups_users')
+    total_f = _count_table(appid_filter, 'members')
 
     return {
-        "success": True,
-        "data": {
-            "labels": labels,
-            "msg_total": msg_total,
-            "msg_private": msg_private,
-            "msg_group": msg_group,
-            "active_users": active_users,
-            "active_groups": active_groups,
-            "total_users": total_u,
-            "total_groups": total_g,
-            "total_friends": total_f,
-            "ev_group_join": ev_group_join,
-            "ev_group_leave": ev_group_leave,
-            "ev_friend_add": ev_friend_add,
-            "ev_friend_remove": ev_friend_remove,
+        'success': True,
+        'data': {
+            'labels': labels,
+            'msg_total': msg_total,
+            'msg_private': msg_private,
+            'msg_group': msg_group,
+            'active_users': active_users,
+            'active_groups': active_groups,
+            'total_users': total_u,
+            'total_groups': total_g,
+            'total_friends': total_f,
+            'ev_group_join': ev_group_join,
+            'ev_group_leave': ev_group_leave,
+            'ev_friend_add': ev_friend_add,
+            'ev_friend_remove': ev_friend_remove,
         },
     }
 
 
-def _gather_stats(force=False, selected_date="", appid_filter=""):
+def _gather_stats(force=False, selected_date='', appid_filter=''):
     """收集统计数据 — 从 SQLite 查询 (实时 message.db + 已存 dau.db)"""
     now = datetime.now()
     bots_count = len(_bot_manager._bots) if _bot_manager else 0
-    date = selected_date or now.strftime("%Y-%m-%d")
+    date = selected_date or now.strftime('%Y-%m-%d')
 
     total_messages = 0
     private_messages = 0
@@ -270,13 +258,13 @@ def _gather_stats(force=False, selected_date="", appid_filter=""):
     cmd_msg = {}  # {plugin_name: count}
 
     event_stats = {
-        "group_join_count": 0,
-        "group_leave_count": 0,
-        "friend_add_count": 0,
-        "friend_remove_count": 0,
+        'group_join_count': 0,
+        'group_leave_count': 0,
+        'friend_add_count': 0,
+        'friend_remove_count': 0,
     }
 
-    is_today = date == now.strftime("%Y-%m-%d")
+    is_today = date == now.strftime('%Y-%m-%d')
 
     if _bot_manager:
         for _appid, inst in _iter_bots(appid_filter):
@@ -284,18 +272,18 @@ def _gather_stats(force=False, selected_date="", appid_filter=""):
                 # 今日: 实时读 message.db
                 try:
                     rows = inst.log_service.query(
-                        "message",
-                        "SELECT COUNT(*) as cnt, "
+                        'message',
+                        'SELECT COUNT(*) as cnt, '
                         "COUNT(DISTINCT CASE WHEN user_id != '' THEN user_id END) as users, "
                         "COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c' THEN group_id END) as groups_, "
                         "COUNT(CASE WHEN group_id = 'c2c' OR group_id = '' THEN 1 END) as private "
-                        "FROM log",
+                        'FROM log',
                         date=date,
                     )
                     if rows:
                         r = rows[0]
-                        total_messages += r.get("cnt", 0)
-                        private_messages += r.get("private", 0)
+                        total_messages += r.get('cnt', 0)
+                        private_messages += r.get('private', 0)
 
                     # active_users/groups 只用于 len(), 用合并查询的 DISTINCT 计数即可, 避免再扫一次表
                     if rows:
@@ -303,70 +291,65 @@ def _gather_stats(force=False, selected_date="", appid_filter=""):
                         active_users.update(
                             range(
                                 len(active_users),
-                                len(active_users) + r0.get("users", 0),
+                                len(active_users) + r0.get('users', 0),
                             )
                         )
                         active_groups.update(
                             range(
                                 len(active_groups),
-                                len(active_groups) + r0.get("groups_", 0),
+                                len(active_groups) + r0.get('groups_', 0),
                             )
                         )
 
                     # Top 群
                     g_rows = inst.log_service.query(
-                        "message",
-                        "SELECT group_id, COUNT(*) AS c FROM log "
-                        "WHERE group_id != '' AND group_id != 'c2c' GROUP BY group_id ORDER BY c DESC LIMIT 10",
+                        'message',
+                        "SELECT group_id, COUNT(*) AS c FROM log WHERE group_id != '' AND group_id != 'c2c' GROUP BY group_id ORDER BY c DESC LIMIT 10",
                         date=date,
                     )
                     for r in g_rows:
-                        gid = r.get("group_id", "")
+                        gid = r.get('group_id', '')
                         if gid:
-                            group_msg[gid] = group_msg.get(gid, 0) + r.get("c", 0)
+                            group_msg[gid] = group_msg.get(gid, 0) + r.get('c', 0)
 
                     # Top 用户
                     u_rows = inst.log_service.query(
-                        "message",
+                        'message',
                         "SELECT user_id, COUNT(*) AS c FROM log WHERE user_id != '' GROUP BY user_id ORDER BY c DESC LIMIT 10",
                         date=date,
                     )
                     for r in u_rows:
-                        uid = r.get("user_id", "")
+                        uid = r.get('user_id', '')
                         if uid:
-                            user_msg[uid] = user_msg.get(uid, 0) + r.get("c", 0)
+                            user_msg[uid] = user_msg.get(uid, 0) + r.get('c', 0)
 
                     # Top 命令
                     c_rows = inst.log_service.query(
-                        "message",
+                        'message',
                         "SELECT plugin_name, COUNT(*) AS c FROM log WHERE plugin_name != '' GROUP BY plugin_name ORDER BY c DESC LIMIT 10",
                         date=date,
                     )
                     for r in c_rows:
-                        cmd = r.get("plugin_name", "")
+                        cmd = r.get('plugin_name', '')
                         if cmd:
-                            cmd_msg[cmd] = cmd_msg.get(cmd, 0) + r.get("c", 0)
+                            cmd_msg[cmd] = cmd_msg.get(cmd, 0) + r.get('c', 0)
                 except Exception:
                     pass
 
             # 历史 / 事件: 从 dau.db
             try:
-                dau_rows = inst.log_service.query(
-                    "dau", "SELECT * FROM log WHERE date=?", (date,)
-                )
+                dau_rows = inst.log_service.query('dau', 'SELECT * FROM log WHERE date=?', (date,))
                 if dau_rows:
                     d = dau_rows[0]
-                    event_stats["group_join_count"] += d.get("group_join_count", 0)
-                    event_stats["group_leave_count"] += d.get("group_leave_count", 0)
-                    event_stats["friend_add_count"] += d.get("friend_add_count", 0)
-                    event_stats["friend_remove_count"] += d.get(
-                        "friend_remove_count", 0
-                    )
+                    event_stats['group_join_count'] += d.get('group_join_count', 0)
+                    event_stats['group_leave_count'] += d.get('group_leave_count', 0)
+                    event_stats['friend_add_count'] += d.get('friend_add_count', 0)
+                    event_stats['friend_remove_count'] += d.get('friend_remove_count', 0)
                     if not is_today:
-                        total_messages += d.get("total_messages", 0)
-                        private_messages += d.get("private_messages", 0)
-                        active_users.update(range(d.get("active_users", 0)))
-                        active_groups.update(range(d.get("active_groups", 0)))
+                        total_messages += d.get('total_messages', 0)
+                        private_messages += d.get('private_messages', 0)
+                        active_users.update(range(d.get('active_users', 0)))
+                        active_groups.update(range(d.get('active_groups', 0)))
             except Exception:
                 pass
 
@@ -382,42 +365,42 @@ def _gather_stats(force=False, selected_date="", appid_filter=""):
         peak_hour_count = hourly[peak_h]
 
     # 每小时分布 (24h)
-    hourly_dist = [hourly.get(f"{h:02d}", 0) for h in range(24)]
+    hourly_dist = [hourly.get(f'{h:02d}', 0) for h in range(24)]
 
     # 昨日每小时分布 (供前端 12 小时图跨越零点)
     yesterday_hourly_dist = None
     if not selected_date:
-        yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
         yh = _aggregate_hourly(appid_filter, yesterday)
-        yesterday_hourly_dist = [yh.get(f"{h:02d}", 0) for h in range(24)]
+        yesterday_hourly_dist = [yh.get(f'{h:02d}', 0) for h in range(24)]
 
     top_groups = sorted(group_msg.items(), key=lambda x: x[1], reverse=True)[:10]
     top_users = sorted(user_msg.items(), key=lambda x: x[1], reverse=True)[:10]
     top_commands = sorted(cmd_msg.items(), key=lambda x: x[1], reverse=True)[:10]
 
     # 累计用户数 / 群数 (从 data.db)
-    total_users_all = _count_table(appid_filter, "users")
-    total_groups_all = _count_table(appid_filter, "groups_users")
+    total_users_all = _count_table(appid_filter, 'users')
+    total_groups_all = _count_table(appid_filter, 'groups_users')
 
     return {
-        "today": {
-            "message_stats": {
-                "total_messages": total_messages,
-                "private_messages": private_messages,
-                "active_users": len(active_users),
-                "active_groups": len(active_groups),
-                "peak_hour": peak_hour,
-                "peak_hour_count": peak_hour_count,
+        'today': {
+            'message_stats': {
+                'total_messages': total_messages,
+                'private_messages': private_messages,
+                'active_users': len(active_users),
+                'active_groups': len(active_groups),
+                'peak_hour': peak_hour,
+                'peak_hour_count': peak_hour_count,
             },
-            "hourly_distribution": hourly_dist,
-            "yesterday_hourly_distribution": yesterday_hourly_dist,
-            "top_groups": [{"group_id": g, "message_count": c} for g, c in top_groups],
-            "top_users": [{"user_id": u, "message_count": c} for u, c in top_users],
-            "top_commands": [{"command": cmd, "count": c} for cmd, c in top_commands],
-            "event_stats": event_stats,
-            "total_users": total_users_all,
-            "total_groups": total_groups_all,
+            'hourly_distribution': hourly_dist,
+            'yesterday_hourly_distribution': yesterday_hourly_dist,
+            'top_groups': [{'group_id': g, 'message_count': c} for g, c in top_groups],
+            'top_users': [{'user_id': u, 'message_count': c} for u, c in top_users],
+            'top_commands': [{'command': cmd, 'count': c} for cmd, c in top_commands],
+            'event_stats': event_stats,
+            'total_users': total_users_all,
+            'total_groups': total_groups_all,
         },
-        "bots_count": bots_count,
-        "cache_date": date,
+        'bots_count': bots_count,
+        'cache_date': date,
     }

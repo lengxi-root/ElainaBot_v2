@@ -18,7 +18,7 @@ class ConfigWatcherService:
         while True:
             await asyncio.sleep(self._interval)
             with contextlib.suppress(Exception):
-                await cfg.reload_if_changed("bot", "settings", "templates")
+                await cfg.reload_if_changed('bot', 'settings', 'templates')
 
     def start(self):
         self._task = asyncio.create_task(self())

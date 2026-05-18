@@ -13,8 +13,8 @@ _pending_interceptors = []
 def handler(
     pattern,
     *,
-    name="",
-    desc="",
+    name='',
+    desc='',
     priority=0,
     owner_only=False,
     group_only=False,
@@ -29,20 +29,20 @@ def handler(
     def decorator(func):
         _pending_handlers.append(
             {
-                "func": func,
-                "is_coro": asyncio.iscoroutinefunction(func),
-                "pattern": pattern,
-                "compiled": re.compile(pattern, re.DOTALL),
-                "name": name or func.__name__,
-                "desc": desc,
-                "priority": priority,
-                "owner_only": owner_only,
-                "group_only": group_only,
-                "direct_only": direct_only,
-                "channel_only": channel_only,
-                "event_types": frozenset(event_types) if event_types else None,
-                "cooldown": cooldown,
-                "ignore_at_check": ignore_at_check,
+                'func': func,
+                'is_coro': asyncio.iscoroutinefunction(func),
+                'pattern': pattern,
+                'compiled': re.compile(pattern, re.DOTALL),
+                'name': name or func.__name__,
+                'desc': desc,
+                'priority': priority,
+                'owner_only': owner_only,
+                'group_only': group_only,
+                'direct_only': direct_only,
+                'channel_only': channel_only,
+                'event_types': frozenset(event_types) if event_types else None,
+                'cooldown': cooldown,
+                'ignore_at_check': ignore_at_check,
             }
         )
         return func
@@ -68,9 +68,9 @@ def interceptor(priority=100):
     def decorator(func):
         _pending_interceptors.append(
             {
-                "func": func,
-                "is_coro": asyncio.iscoroutinefunction(func),
-                "priority": priority,
+                'func': func,
+                'is_coro': asyncio.iscoroutinefunction(func),
+                'priority': priority,
             }
         )
         return func

@@ -12,7 +12,7 @@ import threading
 try:
     import yaml
 except ImportError:
-    raise ImportError("需要安装 pyyaml: pip install pyyaml")
+    raise ImportError('需要安装 pyyaml: pip install pyyaml')
 
 logger = logging.getLogger('ElainaBot.config')
 
@@ -64,16 +64,16 @@ class ConfigManager:
         if self._ready:
             return
         self._config_dir = os.path.abspath(config_dir)
-        self._cache = {}           # {name: parsed_dict}
-        self._mtimes = {}          # {name: float}
-        self._last_check = {}      # {name: float} 限频
-        self._callbacks = {}       # {name: [callable]}
-        self._bot_cfg_map = {}     # {appid_str: bot_dict} 加速查找
-        self._bot_setting_cache = {} # {(appid, key): value} 设置值缓存
-        self._path_cache = {}       # {name: filepath} 解析路径缓存
+        self._cache = {}  # {name: parsed_dict}
+        self._mtimes = {}  # {name: float}
+        self._last_check = {}  # {name: float} 限频
+        self._callbacks = {}  # {name: [callable]}
+        self._bot_cfg_map = {}  # {appid_str: bot_dict} 加速查找
+        self._bot_setting_cache = {}  # {(appid, key): value} 设置值缓存
+        self._path_cache = {}  # {name: filepath} 解析路径缓存
         self._rw_lock = threading.RLock()
         self._ready = True
-        logger.info(f"配置目录: {self._config_dir}")
+        logger.info(f'配置目录: {self._config_dir}')
 
     @property
     def config_dir(self):
@@ -147,9 +147,10 @@ class ConfigManager:
         example_p = base + '.example.yaml'
         if os.path.isfile(example_p):
             import shutil
+
             target = base + '.yaml'
             shutil.copy2(example_p, target)
-            logger.info(f"从示例文件创建配置: {os.path.basename(base)}.yaml <- {os.path.basename(example_p)}")
+            logger.info(f'从示例文件创建配置: {os.path.basename(base)}.yaml <- {os.path.basename(example_p)}')
             self._path_cache[name] = target
             return target
         # 3) 都不存在, 返回默认路径 (后续写入时创建)
@@ -178,9 +179,7 @@ class ConfigManager:
         if old_mtime is None or force_sync:
             self._do_reload(name, filepath, mtime, is_first=(old_mtime is None))
         else:
-            threading.Thread(target=self._do_reload,
-                             args=(name, filepath, mtime),
-                             daemon=True).start()
+            threading.Thread(target=self._do_reload, args=(name, filepath, mtime), daemon=True).start()
 
     def _do_reload(self, name, filepath, mtime, is_first=False):
         """实际加载配置文件 (可在后台线程执行)"""
@@ -188,7 +187,7 @@ class ConfigManager:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f) or {}
         except Exception as e:
-            logger.error(f"解析配置失败 [{name}]: {e}")
+            logger.error(f'解析配置失败 [{name}]: {e}')
             return
 
         with self._rw_lock:
@@ -200,7 +199,7 @@ class ConfigManager:
                 self._bot_setting_cache.clear()
 
         if not is_first:
-            logger.info(f"配置热加载: {name}")
+            logger.info(f'配置热加载: {name}')
             self._fire_callbacks(name, data)
 
     async def reload_if_changed(self, *names):
@@ -214,7 +213,7 @@ class ConfigManager:
             try:
                 cb(data)
             except Exception as e:
-                logger.warning(f"配置回调异常 [{name}]: {e}")
+                logger.warning(f'配置回调异常 [{name}]: {e}')
 
     # ------ 回调注册 ------
 
@@ -251,7 +250,7 @@ class ConfigManager:
             with self._rw_lock:
                 self._cache[name] = copy.deepcopy(defaults)
                 self._mtimes[name] = time.time()
-            logger.info(f"配置创建: {name}")
+            logger.info(f'配置创建: {name}')
             return True
         self._maybe_reload(name, force_sync=True)
         with self._rw_lock:
@@ -262,7 +261,7 @@ class ConfigManager:
         self._write_file(name, current)
         with self._rw_lock:
             self._cache[name] = current
-        logger.info(f"配置补全: {name} (新增 {changed} 项)")
+        logger.info(f'配置补全: {name} (新增 {changed} 项)')
         return True
 
     def _write_file(self, name, data):
@@ -275,9 +274,11 @@ class ConfigManager:
             os.replace(tmp, filepath)
             self._mtimes[name] = os.path.getmtime(filepath)
         except Exception as e:
-            logger.error(f"写入配置失败 [{name}]: {e}")
-            try: os.remove(tmp)
-            except OSError: pass
+            logger.error(f'写入配置失败 [{name}]: {e}')
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     # ------ 工具方法 ------
 
@@ -309,18 +310,21 @@ class ConfigManager:
                 current[k] = copy.deepcopy(v)
                 added += 1
             elif isinstance(v, dict) and isinstance(current[k], dict):
-                added += ConfigManager._merge_defaults(current[k], v, f"{_prefix}{k}.")
+                added += ConfigManager._merge_defaults(current[k], v, f'{_prefix}{k}.')
         return added
 
     @staticmethod
     def _resolve_env_vars(text: str) -> str:
         """解析 ${VAR_NAME:default} 环境变量占位符"""
         import re
+
         _ENV_PATTERN = re.compile(r'\$\{(\w+)(?::([^}]*))?}')
+
         def _replacer(m):
             var = m.group(1)
             default = m.group(2) if m.group(2) is not None else ''
             return os.environ.get(var, default)
+
         return _ENV_PATTERN.sub(_replacer, text)
 
     def reload_all(self):
@@ -331,7 +335,7 @@ class ConfigManager:
             self._last_check.clear()
         for name in names:
             self._maybe_reload(name)
-        logger.info(f"全部配置已重新加载 ({len(names)} 个)")
+        logger.info(f'全部配置已重新加载 ({len(names)} 个)')
 
 
 # ===== 全局单例 =====

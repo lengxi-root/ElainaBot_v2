@@ -82,7 +82,7 @@ def verify_password(plain: str, stored: str) -> bool:
     """恒定时间比较, 兼容明文旧密码"""
     if stored.startswith(_PWD_HASH_PREFIX):
         try:
-            rest = stored[len(_PWD_HASH_PREFIX):]
+            rest = stored[len(_PWD_HASH_PREFIX) :]
             salt_b64, expected_hex = rest.split(':', 1)
             salt = base64.b64decode(salt_b64)
             actual_hex = hashlib.sha256(salt + plain.encode('utf-8')).hexdigest()
@@ -98,6 +98,7 @@ def is_hashed(stored: str) -> bool:
 
 
 # ==================== JSON IO ====================
+
 
 def _read_json(path, default=None):
     try:
@@ -134,6 +135,7 @@ def _write_json(path, data):
 
 # ==================== IP ====================
 
+
 def _load_ip_data():
     global ip_access_data
     ip_access_data = _read_json(_ip_file, {})
@@ -158,9 +160,12 @@ def record_ip_access(ip, access_type='success'):
     now_iso = datetime.now().isoformat()
     if ip not in ip_access_data:
         ip_access_data[ip] = {
-            'first_access': now_iso, 'last_access': now_iso,
-            'fail_count': 0, 'fail_times': [],
-            'is_banned': False, 'ban_time': None,
+            'first_access': now_iso,
+            'last_access': now_iso,
+            'fail_count': 0,
+            'fail_times': [],
+            'is_banned': False,
+            'ban_time': None,
         }
     d = ip_access_data[ip]
     d['last_access'] = now_iso
@@ -168,8 +173,7 @@ def record_ip_access(ip, access_type='success'):
         d['fail_count'] = d.get('fail_count', 0) + 1
         d.setdefault('fail_times', []).append(now_iso)
         now = datetime.now()
-        d['fail_times'] = [t for t in d['fail_times']
-                           if (now - datetime.fromisoformat(t)).total_seconds() < _FAIL_WINDOW]
+        d['fail_times'] = [t for t in d['fail_times'] if (now - datetime.fromisoformat(t)).total_seconds() < _FAIL_WINDOW]
         if len(d['fail_times']) >= _MAX_FAIL_COUNT:
             d['is_banned'] = True
             d['ban_time'] = now_iso
@@ -201,8 +205,7 @@ def get_remaining_attempts(ip) -> int:
     if not d:
         return _MAX_FAIL_COUNT
     now = datetime.now()
-    recent = [t for t in d.get('fail_times', [])
-              if (now - datetime.fromisoformat(t)).total_seconds() < _FAIL_WINDOW]
+    recent = [t for t in d.get('fail_times', []) if (now - datetime.fromisoformat(t)).total_seconds() < _FAIL_WINDOW]
     return max(0, _MAX_FAIL_COUNT - len(recent))
 
 
@@ -224,15 +227,14 @@ def cleanup_expired_ip_bans():
                 pass
     # 超限时淘汰最旧的无封禁记录
     if len(ip_access_data) > _MAX_IP_RECORDS:
-        unbanned = sorted(
-            ((k, v) for k, v in ip_access_data.items() if not v.get('is_banned')),
-            key=lambda x: x[1].get('last_access', ''))
-        for k, _ in unbanned[:len(ip_access_data) - _MAX_IP_RECORDS]:
+        unbanned = sorted(((k, v) for k, v in ip_access_data.items() if not v.get('is_banned')), key=lambda x: x[1].get('last_access', ''))
+        for k, _ in unbanned[: len(ip_access_data) - _MAX_IP_RECORDS]:
             del ip_access_data[k]
     _save_ip_data()
 
 
 # ==================== Token ====================
+
 
 def _generate_token() -> str:
     return base64.urlsafe_b64encode(uuid.uuid4().bytes + uuid.uuid4().bytes).decode().rstrip('=')
@@ -240,7 +242,7 @@ def _generate_token() -> str:
 
 def _sign(value) -> str:
     sig = hmac.new(_COOKIE_SECRET.encode(), value.encode(), hashlib.sha256).hexdigest()
-    return f"{value}.{sig}"
+    return f'{value}.{sig}'
 
 
 def _verify_sig(signed) -> tuple:
@@ -253,6 +255,7 @@ def _verify_sig(signed) -> tuple:
 
 
 # ==================== Session ====================
+
 
 def _load_session_data():
     global valid_sessions
@@ -298,7 +301,7 @@ def create_session(request: web.Request) -> str:
     _cleanup_sessions()
     if len(valid_sessions) > _MAX_SESSIONS:
         oldest = sorted(valid_sessions, key=lambda t: valid_sessions[t]['created'])
-        for t in oldest[:len(valid_sessions) - _MAX_SESSIONS]:
+        for t in oldest[: len(valid_sessions) - _MAX_SESSIONS]:
             valid_sessions.pop(t)
 
     ip = get_real_ip(request)
@@ -336,12 +339,15 @@ def validate_token(request: web.Request) -> bool:
 
 # ==================== 中间件 ====================
 
+
 def require_auth(handler):
     """aiohttp 路由装饰器: 要求 Bearer token"""
+
     async def wrapped(request):
         if not validate_token(request):
             return web.json_response({'success': False, 'error': '未登录或会话已过期'}, status=401)
         return await handler(request)
+
     wrapped.__name__ = handler.__name__
     wrapped.__qualname__ = handler.__qualname__
     return wrapped
@@ -349,18 +355,21 @@ def require_auth(handler):
 
 # ==================== 登录日志查询 ====================
 
+
 def get_login_logs() -> list:
     raw = _read_json(_ip_file, {})
     logs = []
     for ip, d in raw.items():
-        logs.append({
-            'ip': ip,
-            'first_access': d.get('first_access', ''),
-            'last_access': d.get('last_access', ''),
-            'fail_count': d.get('fail_count', 0),
-            'is_banned': d.get('is_banned', False),
-            'ban_time': d.get('ban_time', ''),
-        })
+        logs.append(
+            {
+                'ip': ip,
+                'first_access': d.get('first_access', ''),
+                'last_access': d.get('last_access', ''),
+                'fail_count': d.get('fail_count', 0),
+                'is_banned': d.get('is_banned', False),
+                'ban_time': d.get('ban_time', ''),
+            }
+        )
     logs.sort(key=lambda x: x['last_access'] or '', reverse=True)
     return logs
 

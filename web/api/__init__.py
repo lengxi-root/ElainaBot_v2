@@ -45,8 +45,8 @@ def get_routes() -> list:
     # WebSocket / SSE
     routes.extend(
         [
-            web.get("/ws/panel", panel_ws.handle_ws),
-            web.get("/api/sse/panel", panel_ws.handle_sse),
+            web.get('/ws/panel', panel_ws.handle_ws),
+            web.get('/api/sse/panel', panel_ws.handle_sse),
         ]
     )
     return routes

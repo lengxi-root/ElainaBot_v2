@@ -10,9 +10,9 @@ import websockets
 from core.base.logger import SERVICE, get_logger
 from core.message.event import Event
 
-log = get_logger(SERVICE, "WebSocket")
+log = get_logger(SERVICE, 'WebSocket')
 
-_GATEWAY_URL = "https://api.sgroup.qq.com/gateway/bot"
+_GATEWAY_URL = 'https://api.sgroup.qq.com/gateway/bot'
 
 _OP_DISPATCH = 0
 _OP_HEARTBEAT = 1
@@ -39,18 +39,16 @@ class WSClient:
         *,
         reconnect_interval=5,
         max_reconnects=-1,
-        custom_url="",
-        custom_api_base="",
+        custom_url='',
+        custom_api_base='',
     ):
         self._appid = str(appid)
         self._tm = token_manager
         self._on_event = on_event
         self._reconnect_interval = reconnect_interval
         self._max_reconnects = max_reconnects
-        self._custom_url = custom_url.strip() if custom_url else ""
-        self._custom_api_base = (
-            custom_api_base.strip().rstrip("/") if custom_api_base else ""
-        )
+        self._custom_url = custom_url.strip() if custom_url else ''
+        self._custom_api_base = custom_api_base.strip().rstrip('/') if custom_api_base else ''
 
         self._ws = None
         self._session_id = None
@@ -70,14 +68,10 @@ class WSClient:
         while not self._closed:
             try:
                 url = await self._get_gateway_url()
-                log.info(f"[{self._appid}] 正在连接 WebSocket: {url}")
+                log.info(f'[{self._appid}] 正在连接 WebSocket: {url}')
                 import ssl as _ssl_mod
 
-                _ssl = (
-                    _ssl_mod.create_default_context()
-                    if url.startswith("wss://")
-                    else None
-                )
+                _ssl = _ssl_mod.create_default_context() if url.startswith('wss://') else None
                 async with websockets.connect(url, ssl=_ssl) as ws:
                     self._ws = ws
                     self._reconnect_count = 0
@@ -89,14 +83,9 @@ class WSClient:
                     break
                 self._reconnect_count += 1
                 if 0 < self._max_reconnects <= self._reconnect_count:
-                    log.error(
-                        f"[{self._appid}] 达到最大重连次数 {self._max_reconnects}"
-                    )
+                    log.error(f'[{self._appid}] 达到最大重连次数 {self._max_reconnects}')
                     break
-                log.warning(
-                    f"[{self._appid}] 连接断开: {e}, {self._reconnect_interval}s 后重连 "
-                    f"({self._reconnect_count})"
-                )
+                log.warning(f'[{self._appid}] 连接断开: {e}, {self._reconnect_interval}s 后重连 ({self._reconnect_count})')
                 await asyncio.sleep(self._reconnect_interval)
 
     async def close(self):
@@ -113,9 +102,9 @@ class WSClient:
                 payload = json.loads(message)
             except json.JSONDecodeError:
                 continue
-            op = payload.get("op")
-            if payload.get("s") is not None:
-                self._seq = payload["s"]
+            op = payload.get('op')
+            if payload.get('s') is not None:
+                self._seq = payload['s']
             if op == _OP_HELLO:
                 await self._on_hello(payload)
             elif op == _OP_DISPATCH:
@@ -123,25 +112,23 @@ class WSClient:
             elif op == _OP_HEARTBEAT_ACK:
                 pass
             elif op == _OP_RECONNECT:
-                log.info(f"[{self._appid}] 收到重连请求")
+                log.info(f'[{self._appid}] 收到重连请求')
                 break
             elif op == _OP_INVALID_SESSION:
-                resumable = payload.get("d", False) and self._session_id
+                resumable = payload.get('d', False) and self._session_id
                 if not resumable:
-                    log.warning(f"[{self._appid}] 会话无效, 重新鉴权")
+                    log.warning(f'[{self._appid}] 会话无效, 重新鉴权')
                     self._session_id = None
                     self._seq = None
                 else:
-                    log.warning(f"[{self._appid}] 会话无效但可恢复")
+                    log.warning(f'[{self._appid}] 会话无效但可恢复')
                 self._gateway_url = None
                 await asyncio.sleep(3)
                 break
 
     async def _on_hello(self, payload):
         """Hello → 启动心跳 + 鉴权/恢复"""
-        self._heartbeat_interval = (
-            payload.get("d", {}).get("heartbeat_interval", 45000) / 1000
-        )
+        self._heartbeat_interval = payload.get('d', {}).get('heartbeat_interval', 45000) / 1000
         if self._heartbeat_task and not self._heartbeat_task.done():
             self._heartbeat_task.cancel()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
@@ -152,22 +139,22 @@ class WSClient:
 
     async def _on_dispatch(self, payload):
         """事件分发 → 构造 Event 并回调"""
-        event_type = payload.get("t", "")
-        if event_type == "INTERACTION_CREATE":
+        event_type = payload.get('t', '')
+        if event_type == 'INTERACTION_CREATE':
             await self._send_event_ack(payload)
-        if event_type == "READY":
-            self._session_id = payload.get("d", {}).get("session_id")
-            log.info(f"[{self._appid}] WebSocket 已就绪 (session={self._session_id})")
+        if event_type == 'READY':
+            self._session_id = payload.get('d', {}).get('session_id')
+            log.info(f'[{self._appid}] WebSocket 已就绪 (session={self._session_id})')
             return
-        if event_type == "RESUMED":
-            log.info(f"[{self._appid}] 会话已恢复")
+        if event_type == 'RESUMED':
+            log.info(f'[{self._appid}] 会话已恢复')
             return
         try:
             event = Event.from_websocket(self._appid, payload)
-            log.debug(f"[{self._appid}] WS事件: {event}")
+            log.debug(f'[{self._appid}] WS事件: {event}')
             asyncio.create_task(self._dispatch_with_backpressure(event))
         except Exception as e:
-            log.error(f"[{self._appid}] 事件处理异常: {e}")
+            log.error(f'[{self._appid}] 事件处理异常: {e}')
 
     async def _dispatch_with_backpressure(self, event):
         """背压包装: Semaphore 控制并发, 满载时新事件等待空闲槽位"""
@@ -175,34 +162,34 @@ class WSClient:
             try:
                 await self._on_event(event)
             except Exception as e:
-                log.error(f"[{self._appid}] 事件回调异常: {e}")
+                log.error(f'[{self._appid}] 事件回调异常: {e}')
 
     async def _send_event_ack(self, payload, code=0):
         """回复事件确认 (op 12)"""
         with contextlib.suppress(Exception):
-            await self._ws.send(json.dumps({"op": _OP_EVENT_ACK, "code": code}))
+            await self._ws.send(json.dumps({'op': _OP_EVENT_ACK, 'code': code}))
 
-    async def _send_op(self, op, data, label=""):
+    async def _send_op(self, op, data, label=''):
         """发送 WS 操作帧"""
-        await self._ws.send(json.dumps({"op": op, "d": data}))
+        await self._ws.send(json.dumps({'op': op, 'd': data}))
         if label:
-            log.info(f"[{self._appid}] {label}")
+            log.info(f'[{self._appid}] {label}')
 
     async def _send_identify(self):
         token = await self._tm.get_token()
         await self._send_op(
             _OP_IDENTIFY,
             {
-                "token": f"QQBot {token}",
-                "intents": self._get_intents(),
-                "shard": [0, 1],
-                "properties": {
-                    "$os": "python",
-                    "$browser": "elaina-bot",
-                    "$device": "elaina-bot",
+                'token': f'QQBot {token}',
+                'intents': self._get_intents(),
+                'shard': [0, 1],
+                'properties': {
+                    '$os': 'python',
+                    '$browser': 'elaina-bot',
+                    '$device': 'elaina-bot',
                 },
             },
-            "已发送鉴权",
+            '已发送鉴权',
         )
 
     async def _send_resume(self):
@@ -210,11 +197,11 @@ class WSClient:
         await self._send_op(
             _OP_RESUME,
             {
-                "token": f"QQBot {token}",
-                "session_id": self._session_id,
-                "seq": self._seq,
+                'token': f'QQBot {token}',
+                'session_id': self._session_id,
+                'seq': self._seq,
             },
-            f"已发送恢复 (seq={self._seq})",
+            f'已发送恢复 (seq={self._seq})',
         )
 
     async def _heartbeat_loop(self):
@@ -222,9 +209,7 @@ class WSClient:
             try:
                 await asyncio.sleep(self._heartbeat_interval)
                 if self._ws and not self._closed:
-                    await self._ws.send(
-                        json.dumps({"op": _OP_HEARTBEAT, "d": self._seq})
-                    )
+                    await self._ws.send(json.dumps({'op': _OP_HEARTBEAT, 'd': self._seq}))
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -238,33 +223,21 @@ class WSClient:
         # 优先使用自定义 WS 地址
         if self._custom_url:
             self._gateway_url = self._custom_url
-            log.info(f"[{self._appid}] 使用自定义 WS 地址: {self._custom_url}")
+            log.info(f'[{self._appid}] 使用自定义 WS 地址: {self._custom_url}')
             return self._gateway_url
 
         # 自定义 API 基址时, 从该基址获取网关
-        url = (
-            f"{self._custom_api_base}/gateway/bot"
-            if self._custom_api_base
-            else _GATEWAY_URL
-        )
+        url = f'{self._custom_api_base}/gateway/bot' if self._custom_api_base else _GATEWAY_URL
         token = await self._tm.get_token()
         client = await self._tm.get_client()
-        resp = await client.get(url, headers={"Authorization": f"QQBot {token}"})
+        resp = await client.get(url, headers={'Authorization': f'QQBot {token}'})
         data = resp.json()
-        self._gateway_url = data.get("url", "")
+        self._gateway_url = data.get('url', '')
         if not self._gateway_url:
-            raise RuntimeError(f"获取网关失败: {data}")
+            raise RuntimeError(f'获取网关失败: {data}')
         return self._gateway_url
 
     @staticmethod
     def _get_intents():
         """构建 intents 位掩码"""
-        return (
-            (1 << 0)
-            | (1 << 10)
-            | (1 << 12)
-            | (1 << 25)
-            | (1 << 26)
-            | (1 << 27)
-            | (1 << 30)
-        )
+        return (1 << 0) | (1 << 10) | (1 << 12) | (1 << 25) | (1 << 26) | (1 << 27) | (1 << 30)

@@ -16,7 +16,7 @@ except ImportError:
 class HttpResponse:
     """统一 HTTP 响应"""
 
-    __slots__ = ("status_code", "content", "headers")
+    __slots__ = ('status_code', 'content', 'headers')
 
     def __init__(self, status_code, content, headers):
         self.status_code = status_code
@@ -30,12 +30,12 @@ class HttpResponse:
 class AsyncHttpClient:
     """统一异步 HTTP 客户端 — httpx 优先, 回退 aiohttp"""
 
-    __slots__ = ("_client", "_is_httpx")
+    __slots__ = ('_client', '_is_httpx')
 
     def __init__(
         self,
         *,
-        base_url="",
+        base_url='',
         timeout=30.0,
         max_connections=200,
         max_keepalive=75,
@@ -45,7 +45,7 @@ class AsyncHttpClient:
         self._is_httpx = HAS_HTTPX
         if self._is_httpx:
             self._client = httpx.AsyncClient(
-                base_url=base_url or "",
+                base_url=base_url or '',
                 timeout=timeout,
                 follow_redirects=follow_redirects,
                 limits=httpx.Limits(
@@ -62,9 +62,7 @@ class AsyncHttpClient:
                 keepalive_timeout=int(keepalive_expiry),
                 enable_cleanup_closed=True,
             )
-            self._client = aiohttp.ClientSession(
-                base_url=base_url or None, timeout=_timeout, connector=_conn
-            )
+            self._client = aiohttp.ClientSession(base_url=base_url or None, timeout=_timeout, connector=_conn)
 
     @property
     def is_closed(self):
@@ -81,26 +79,18 @@ class AsyncHttpClient:
             return HttpResponse(resp.status, body, resp.headers)
 
     async def get(self, url, **kwargs):
-        return await self.request("GET", url, **kwargs)
+        return await self.request('GET', url, **kwargs)
 
     async def post(self, url, **kwargs):
-        return await self.request("POST", url, **kwargs)
+        return await self.request('POST', url, **kwargs)
 
     async def put(self, url, *, content=None, headers=None, timeout=None, **kwargs):
         if self._is_httpx:
             _t = httpx.Timeout(timeout) if isinstance(timeout, int | float) else timeout
-            resp = await self._client.put(
-                url, content=content, headers=headers, timeout=_t, **kwargs
-            )
+            resp = await self._client.put(url, content=content, headers=headers, timeout=_t, **kwargs)
             return HttpResponse(resp.status_code, resp.content, resp.headers)
-        _t = (
-            aiohttp.ClientTimeout(total=timeout)
-            if isinstance(timeout, int | float)
-            else timeout
-        )
-        async with self._client.put(
-            url, data=content, headers=headers, timeout=_t, **kwargs
-        ) as resp:
+        _t = aiohttp.ClientTimeout(total=timeout) if isinstance(timeout, int | float) else timeout
+        async with self._client.put(url, data=content, headers=headers, timeout=_t, **kwargs) as resp:
             body = await resp.read()
             return HttpResponse(resp.status, body, resp.headers)
 
