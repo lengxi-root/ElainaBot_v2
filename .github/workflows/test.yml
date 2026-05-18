@@ -178,45 +178,35 @@ jobs:
           pattern: integration-test
           path: coverage-data-integration
 
-      - name: Combine & enforce coverage threshold
+      - name: Combine & report coverage
         run: |
           pip install coverage[toml]
 
           echo "=== Coverage files ==="
           find . -name 'coverage*.xml' -type f
 
-          # 从 unit-test py3.11 读取覆盖率报告
-          UNIT_XML="coverage-data/coverage.xml"
-          INTEG_XML="coverage-data-integration/coverage-integration.xml"
+          # 从 XML 中提取覆盖率摘要 (避免 YAML 内 Python 字符串转义问题)
+          python << 'PYEOF'
+          import xml.etree.ElementTree as ET, os, glob
 
-          if [ -f "$UNIT_XML" ]; then
-            echo ""
-            echo "=== Unit test coverage ==="
-            python -m coverage report --data-file=coverage-data/.coverage 2>/dev/null \
-              || python -c "
-import xml.etree.ElementTree as ET
-tree = ET.parse('$UNIT_XML')
-root = tree.getroot()
-for pkg in root.findall('.//package'):
-    print(f'{pkg.get(\"name\", \"?\"):30s} {pkg.get(\"line-rate\", \"0\")}')
-lr = root.get('line-rate')
-print(f'\nTotal line rate: {float(lr)*100:.1f}%' if lr else '\nNo coverage data')
-"
-          fi
+          def report_xml(label, path):
+              if not os.path.isfile(path):
+                  return
+              tree = ET.parse(path)
+              root = tree.getroot()
+              lr = float(root.get("line-rate", 0))
+              print(f"\n=== {label} ===")
+              for pkg in root.findall(".//package"):
+                  name = pkg.get("name", "?")
+                  rate = float(pkg.get("line-rate", 0))
+                  print(f"  {name:30s} {rate*100:5.1f}%")
+              print(f"  {'TOTAL':30s} {lr*100:5.1f}%")
 
-          if [ -f "$INTEG_XML" ]; then
-            echo ""
-            echo "=== Integration test coverage ==="
-            python -c "
-import xml.etree.ElementTree as ET
-tree = ET.parse('$INTEG_XML')
-root = tree.getroot()
-lr = root.get('line-rate')
-print(f'Line rate: {float(lr)*100:.1f}%' if lr else 'No coverage data')
-"
-          fi
+          report_xml("Unit test coverage", "coverage-data/coverage.xml")
+          report_xml("Integration test coverage", "coverage-data-integration/coverage-integration.xml")
+          PYEOF
 
-          # 合并 coverage XML → 输出最终报告
+          # 合并并输出最终报告
           python -m coverage combine coverage-data/ coverage-data-integration/ 2>/dev/null || true
           python -m coverage xml -o coverage-combined.xml 2>/dev/null || true
           python -m coverage report --show-missing 2>/dev/null || true
