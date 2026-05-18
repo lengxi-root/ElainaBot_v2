@@ -33,13 +33,21 @@ async def _shutdown_tasks(tasks, stop_event):
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def _close_all_conns(conns):
-    """WAL checkpoint + 关闭并清空所有 SQLite 连接"""
-    for conn in conns.values():
-        with contextlib.suppress(Exception):
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        with contextlib.suppress(Exception):
-            conn.close()
+def _close_all_conns(conns, conn_locks=None):
+    """WAL checkpoint + 关闭并清空所有 SQLite 连接 (加锁防止与 executor 写线程竞态)"""
+    for db_path, conn in conns.items():
+        lock = (conn_locks or {}).get(db_path)
+        if lock:
+            lock.acquire()
+        try:
+            with contextlib.suppress(Exception):
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            with contextlib.suppress(Exception):
+                conn.close()
+        finally:
+            if lock:
+                with contextlib.suppress(Exception):
+                    lock.release()
     conns.clear()
 
 
@@ -291,4 +299,4 @@ class _BaseLogService:
     async def _shutdown_base(self):
         await _shutdown_tasks(self._tasks, self._stop)
         await self._flush_all()
-        _close_all_conns(self._conns)
+        _close_all_conns(self._conns, self._conn_locks)
