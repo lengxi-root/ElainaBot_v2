@@ -21,9 +21,9 @@ SYSTEM = '系统'
 _FRAMEWORK_NAME = 'ElainaBot'
 
 # 错误回调(由 service/log.py 注册, 写入 SQLite)
-_error_callbacks = []
+_error_callbacks: list = []
 # 框架日志回调
-_framework_callbacks = []
+_framework_callbacks: list = []
 
 
 def _now_str():

@@ -3,18 +3,19 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 from aiohttp import web
 
 log = logging.getLogger('ElainaBot.web.stats')
 
-_statistics_tasks = {}
-_task_results = {}
-_bot_manager = None
+_statistics_tasks: dict[str, asyncio.Task[Any]] = {}
+_task_results: dict[str, dict[str, Any]] = {}
+_bot_manager: object | None = None
 
 # 简单内存缓存: {(date, appid_filter): (timestamp, data)} — 避免短时间内重复全表扫描
-_stats_cache = {}
-_chart_cache = {}
+_stats_cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+_chart_cache: dict[str, dict[str, Any]] = {}
 _CACHE_TTL = 10  # 秒
 
 

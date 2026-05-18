@@ -102,6 +102,16 @@ def _load_mirror_cache():
         return []
 
 
+def clear_mirror_cache():
+    """删除磁盘缓存, 强制下次重新测速"""
+    try:
+        path = _mirror_cache_path()
+        if os.path.isfile(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
 def _build_mirror_url(original_url, mirror):
     """拼接镜像 URL"""
     if not mirror:

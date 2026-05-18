@@ -79,7 +79,7 @@ def read_manifest(mod_dir: str, *, var_name: str = '__module_meta__', entry_name
             tree = ast.parse(f.read())
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id == var_name:
-                return ast.literal_eval(node.value)
+                return ast.literal_eval(node.value)  # type: ignore[no-any-return]
     except Exception:
         pass
     return dict(DEFAULT_MANIFEST)

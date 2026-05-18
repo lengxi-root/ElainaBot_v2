@@ -5,7 +5,8 @@ import logging
 import os
 from datetime import datetime
 
-from aiohttp import web
+from aiohttp import web, BodyPartReader
+from typing import cast
 
 log = logging.getLogger('ElainaBot.web.updater')
 
@@ -234,7 +235,7 @@ async def handle_upload_update(request: web.Request):
     updater = _get_updater()
 
     reader = await request.multipart()
-    field = await reader.next()
+    field = cast(BodyPartReader, await reader.next())
     if not field or field.name != 'file':
         return web.json_response({'success': False, 'message': '缺少文件'}, status=400)
 
@@ -262,7 +263,7 @@ async def handle_upload_update(request: web.Request):
     skip_backup = False
     auto_restart = False
     while True:
-        field = await reader.next()
+        field = cast(BodyPartReader, await reader.next())
         if field is None:
             break
         val = (await field.read()).decode('utf-8', errors='ignore')

@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from aiohttp import web
+from typing import cast
 
 _COOKIE_SECRET = ''
 _BAN_DURATION = 43200
@@ -152,6 +153,8 @@ def get_real_ip(request: web.Request) -> str:
     real_ip = request.headers.get('X-Real-IP')
     if real_ip:
         return real_ip.strip()
+    if request.transport is None:
+        return '127.0.0.1'
     peername = request.transport.get_extra_info('peername')
     return peername[0] if peername else '127.0.0.1'
 

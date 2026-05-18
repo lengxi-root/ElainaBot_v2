@@ -15,7 +15,7 @@ log = logging.getLogger('ElainaBot.web.sysinfo')
 
 _IS_WINDOWS = platform.system() == 'Windows'
 _start_time = datetime.now()
-_last_gc = 0
+_last_gc: float = 0.0
 _GC_INTERVAL = 30
 _bot_manager = None
 

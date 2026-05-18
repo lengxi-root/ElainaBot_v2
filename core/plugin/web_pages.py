@@ -43,7 +43,7 @@ def get_page_html(key: str) -> str | None:
     if not info:
         return None
     if info.get('html'):
-        return info['html']
+        return str(info['html'])
     path = info.get('html_file')
     if not path:
         return '<p>空页面</p>'

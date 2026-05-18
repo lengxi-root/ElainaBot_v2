@@ -16,7 +16,7 @@ class BotRegistry:
     """管理多个 BotInstance 的生命周期和配置热重载"""
 
     def __init__(self, log_base: str, on_event=None, push_web_log=None):
-        self._bots = {}  # {appid: BotInstance}
+        self._bots: dict[str, object] = {}  # {appid: BotInstance}
         self._log_base = log_base
         self._on_event = on_event
         self._push_web_log = push_web_log or (lambda t, e: None)

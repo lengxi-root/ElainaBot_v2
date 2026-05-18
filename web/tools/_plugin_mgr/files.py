@@ -4,7 +4,8 @@ import os
 import re
 import shutil
 
-from aiohttp import web
+from aiohttp import web, BodyPartReader
+from typing import cast
 
 from web.tools._plugin_mgr.shared import (
     get_pm,
