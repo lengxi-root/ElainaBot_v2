@@ -175,6 +175,7 @@ class Event:
         'mentions',
         'is_at_self',
         'is_at_other_bot',
+        'is_at_other_user',
         'is_at_all',
         '_sender',
         '_reply_log_cb',
