@@ -3,8 +3,9 @@
 import os
 import re
 import shutil
+from typing import cast
 
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 
 from web.tools._plugin_mgr.shared import (
     get_pm,
@@ -204,12 +205,16 @@ async def handle_upload_plugin(request: web.Request):
     file_field = None
     directory = 'alone'
     async for field in reader:
+        field = cast(BodyPartReader, field)
         if field.name == 'file':
             file_field = field
         elif field.name == 'directory':
             directory = (await field.text()).strip() or 'alone'
 
-    if not file_field or not file_field.filename:
+    if not file_field:
+        return web.json_response({'success': False, 'message': '没有文件'}, status=400)
+    file_field = cast(BodyPartReader, file_field)
+    if not file_field.filename:
         return web.json_response({'success': False, 'message': '没有文件'}, status=400)
     filename = file_field.filename
     if not filename.endswith('.py'):

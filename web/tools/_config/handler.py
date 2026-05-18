@@ -101,7 +101,7 @@ def _serialize_template(key, value):
     return [f'{key}: {_yaml_scalar(value)}']
 
 
-def _serialize_templates(data):
+def _serialize_templates(data: dict) -> str:
     """将模板数据字典序列化为 YAML 文本"""
     lines = []
     for key, value in data.items():
@@ -120,8 +120,8 @@ def _merge_preserving_comments(original_text: str, new_data: dict) -> str:
     if not original_text.strip():
         return _serialize_templates(new_data)
 
-    sections = []
-    current_comments = []
+    sections: list[tuple[str, str | None, list[str], list[str]]] = []
+    current_comments: list[str] = []
     current_key = None
     current_lines = []
 
@@ -154,7 +154,7 @@ def _merge_preserving_comments(original_text: str, new_data: dict) -> str:
     elif current_comments:
         sections.append(('tail', None, current_comments, []))
 
-    output = []
+    output: list[str] = []
     used_keys = set()
 
     for sec_type, key, comments, lines in sections:

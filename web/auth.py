@@ -152,6 +152,8 @@ def get_real_ip(request: web.Request) -> str:
     real_ip = request.headers.get('X-Real-IP')
     if real_ip:
         return real_ip.strip()
+    if request.transport is None:
+        return '127.0.0.1'
     peername = request.transport.get_extra_info('peername')
     return peername[0] if peername else '127.0.0.1'
 

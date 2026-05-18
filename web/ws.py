@@ -118,7 +118,7 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     # 验证 token
     token = request.query.get('token', '')
     if not token or token not in auth.valid_sessions:
-        return web.Response(status=401, text='Unauthorized')
+        return web.Response(status=401, text='Unauthorized')  # type: ignore[return-value]  # auth failure before WS upgrade
 
     ws = web.WebSocketResponse(heartbeat=30)
     await ws.prepare(request)
@@ -169,7 +169,7 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
     resp.headers['X-Accel-Buffering'] = 'no'  # 禁止 Nginx 缓冲
     await resp.prepare(request)
 
-    queue = asyncio.Queue(maxsize=256)
+    queue: asyncio.Queue[str] = asyncio.Queue(maxsize=256)
     _broadcast.sse_queues.add(queue)
     log.debug(f'SSE 客户端已连接 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})')
 

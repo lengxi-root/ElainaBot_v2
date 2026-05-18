@@ -2,10 +2,10 @@
 
 import time
 
-_nickname_cache = {}
+_nickname_cache: dict[str, tuple[float, str]] = {}
 _CACHE_TIMEOUT = 86400
-_base_dir = ''
-_bot_manager = None
+_base_dir: str = ''
+_bot_manager: object | None = None
 
 
 def set_context(base_dir: str, bot_manager=None):

@@ -25,14 +25,11 @@ def build_keyboard(button_rows, appid=None):
                 'action': action,
             }
             # 自定义字段覆盖
+            if show := btn.get('show'):
+                r_data.setdefault('visited_label', show)
             if text := btn.get('text'):
                 r_data['label'] = text
-                r_data['visited_label'] = r_data.get('visited_label') or text
-            if show := btn.get('show'):
-                r_data['visited_label'] = show
-            if style := btn.get('style'):
-                r_data['style'] = style
-
+                r_data.setdefault('visited_label', text)
             # link 优先 (覆盖 type/data)
             if 'link' in btn:
                 b['action']['type'] = 0

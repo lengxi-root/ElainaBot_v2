@@ -8,8 +8,9 @@ import shutil
 import tempfile
 import zipfile
 from datetime import datetime
+from typing import cast
 
-from aiohttp import web
+from aiohttp import BodyPartReader, web
 
 from web.tools._plugin_mgr.shared import (
     bot_manager,
@@ -127,7 +128,7 @@ async def handle_module_toggle(request: web.Request):
 async def handle_module_upload(request: web.Request):
     """上传模块 (zip 格式, 必须含 .py 和 .json)"""
     reader = await request.multipart()
-    field = await reader.next()
+    field = cast(BodyPartReader, await reader.next())
     if not field or field.name != 'file':
         return web.json_response({'success': False, 'message': '缺少文件'}, status=400)
 

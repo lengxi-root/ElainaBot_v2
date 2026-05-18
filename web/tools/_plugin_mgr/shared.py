@@ -9,7 +9,7 @@ log = logging.getLogger('ElainaBot.web.plugin_mgr')
 
 # ==================== 全局状态 (由 plugin_manager.set_context 注入) ====================
 
-_state = {'base_dir': '', 'bot_manager': None}
+_state: dict[str, object] = {'base_dir': '', 'bot_manager': None}
 
 
 def set_context(base_dir: str, bot_manager=None):
@@ -19,7 +19,7 @@ def set_context(base_dir: str, bot_manager=None):
 
 
 def base_dir() -> str:
-    return _state['base_dir']
+    return str(_state['base_dir'])
 
 
 def bot_manager():
@@ -27,11 +27,11 @@ def bot_manager():
 
 
 def plugins_dir() -> str:
-    return os.path.join(_state['base_dir'], 'plugins')
+    return os.path.join(str(_state['base_dir']), 'plugins')
 
 
 def modules_dir() -> str:
-    return os.path.join(_state['base_dir'], 'modules')
+    return os.path.join(str(_state['base_dir']), 'modules')
 
 
 def get_pm():
