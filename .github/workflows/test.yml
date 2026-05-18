@@ -253,7 +253,7 @@ jobs:
           check "coverage"          "$COV"
           echo "============================================"
 
-          if [ -n "$failed" ]; then
+          if [ "$failed" = true ]; then
             echo ""
             echo "╔══════════════════════════════════════════╗"
             echo "║  ⛔ GATE FAILED — 门禁未通过           ║"
