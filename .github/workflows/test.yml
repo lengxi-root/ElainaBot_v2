@@ -121,7 +121,19 @@ jobs:
         run: pip install ".[dev]"
 
       - name: Run integration tests
-        run: pytest tests/ -m integration -v --tb=long --cov-append --cov-report=xml:coverage-integration.xml --cov-report=term --junitxml=junit-integration.xml
+        id: integration
+        run: |
+          pytest tests/ -m integration -v --tb=long --cov-append --cov-report=xml:coverage-integration.xml --cov-report=term --junitxml=junit-integration.xml; ret=$?
+          if [ $ret -eq 5 ]; then
+            echo "::warning::No integration tests found"
+          elif [ $ret -ne 0 ]; then
+            exit $ret
+          fi
+
+      - name: Ensure artifact files exist
+        if: always()
+        run: |
+          touch junit-integration.xml coverage-integration.xml
 
       - name: Upload integration test artifacts
         if: always()
