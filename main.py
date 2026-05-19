@@ -78,6 +78,7 @@ def main():
                     continue
                 t.unlink(missing_ok=True)
                 shutil.rmtree(t.parent / '__pycache__', ignore_errors=True)
+            break
 
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
