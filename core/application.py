@@ -21,6 +21,21 @@ from core.storage.log import SharedLogService
 
 log = get_logger(SYSTEM, '启动器')
 
+
+def _tune_malloc():
+    """调优 glibc malloc: 限制 arena, 降低碎片 (进程级)"""
+    try:
+        import ctypes
+        libc = ctypes.CDLL('libc.so.6')
+        libc.mallopt(-8, 2)          # M_ARENA_MAX: 2
+        libc.mallopt(-1, 128 * 1024) # M_TRIM_THRESHOLD: 128KB
+        log.info("glibc malloc 已调优 (arena_max=2, trim=128K)")
+    except Exception:
+        pass  # Windows / musl
+
+
+_tune_malloc()
+
 # 全局应用实例 (由 start() 设置)
 _app: 'Application | None' = None
 

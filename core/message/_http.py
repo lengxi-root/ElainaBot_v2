@@ -59,24 +59,29 @@ class _HttpMixin:
                 _t = time.time()
                 resp = await client.request(method, endpoint, headers=headers, **kwargs)
                 body = resp.content
+                status = resp.status_code
+                del resp  # 立即释放 HttpResponse 引用
                 _dt = (time.time() - _t) * 1000
                 if _dt > 1500:
-                    log.warning(f'[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {resp.status_code}')
-                if resp.status_code >= 400:
+                    log.warning(f'[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {status}')
+                if status >= 400:
                     try:
                         err = json.loads(body)
                     except Exception:
                         err = {
                             'message': body.decode(errors='replace'),
-                            'code': resp.status_code,
+                            'code': status,
                         }
+                    del body
                     if err.get('code') == _TOKEN_EXPIRED_CODE and attempt == 0:
                         await self._token_mgr.refresh_token()
                         await asyncio.sleep(0.1)
                         continue
                     return False, err
                 if body:
-                    return True, json.loads(body)
+                    result = json.loads(body)
+                    del body
+                    return True, result
                 return True, {}
             except Exception as e:
                 return False, {'message': str(e), 'code': -1}

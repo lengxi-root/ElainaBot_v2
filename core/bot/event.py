@@ -68,6 +68,8 @@ class EventHandlerMixin:
         self._group_users_cache = {}
         self._group_locks = {}
         self._full_access_cache = {}  # {group_id: expire_ts}
+        self._dirty_groups = {}  # {group_id: bot} — 待写入的群缓存
+        self._flush_task = None
 
     # ==================== 事件入口 ====================
 
@@ -438,6 +440,24 @@ class EventHandlerMixin:
             entry['last_active'] = today
         return True
 
+    def _ensure_flush_task(self):
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = asyncio.create_task(self._flush_dirty_groups())
+
+    async def _flush_dirty_groups(self):
+        while True:
+            await asyncio.sleep(30)
+            if not self._dirty_groups:
+                continue
+            batch, self._dirty_groups = self._dirty_groups, {}
+            for gid, bot in batch.items():
+                cached = self._group_users_cache.get(gid)
+                if cached:
+                    bot.log_service.db_queue(
+                        'UPDATE groups_users SET users=? WHERE group_id=?',
+                        (self._users_json(cached[1]), gid),
+                    )
+
     @staticmethod
     def _parse_user_map(raw_list):
         """将 DB 中的 users JSON 列表解析为 {uid: entry} dict"""
@@ -470,10 +490,8 @@ class EventHandlerMixin:
             expire_ts, user_map = cached
             if time.time() < expire_ts:
                 if self._upsert_group_user(user_map, uid, today):
-                    bot.log_service.db_queue(
-                        'UPDATE groups_users SET users=? WHERE group_id=?',
-                        (self._users_json(user_map), group_id),
-                    )
+                    self._dirty_groups[group_id] = bot
+                    self._ensure_flush_task()
                 return
             del self._group_users_cache[group_id]
 
