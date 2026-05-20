@@ -1,11 +1,12 @@
 """消息管理 — 全局状态, 昵称缓存, bot 迭代器"""
 
 import time
+from typing import Any
 
 _nickname_cache: dict[str, tuple[float, str]] = {}
 _CACHE_TIMEOUT = 86400
 _base_dir: str = ''
-_bot_manager: object | None = None
+_bot_manager: Any = None
 
 
 def set_context(base_dir: str, bot_manager=None):

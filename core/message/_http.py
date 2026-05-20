@@ -5,7 +5,7 @@ import json
 import time
 
 from core.base.logger import FRAMEWORK, get_logger
-from core.network.http_compat import HAS_HTTPX, AsyncHttpClient
+from core.network.http_compat import HAS_HTTPX
 
 log = get_logger(FRAMEWORK, '消息发送')
 
@@ -38,13 +38,13 @@ class _HttpMixin:
 
     async def _ensure_client(self):
         if self._client is None or self._client.is_closed:
-            self._client = AsyncHttpClient(base_url=self._base_url, timeout=30.0)
-            log.info(f'[{self._appid}] HTTP客户端初始化: {"httpx" if HAS_HTTPX else "aiohttp"}')
+            self._client = await self._token_mgr.get_client()
+            log.info(f'[{self._appid}] HTTP客户端已共享: {"httpx" if HAS_HTTPX else "aiohttp"}')
         return self._client
 
     async def close(self):
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
+        # 客户端由 TokenManager 统一管理生命周期
+        self._client = None
 
     async def _request(self, method, endpoint, **kwargs):
         client = await self._ensure_client()
@@ -59,24 +59,29 @@ class _HttpMixin:
                 _t = time.time()
                 resp = await client.request(method, endpoint, headers=headers, **kwargs)
                 body = resp.content
+                status = resp.status_code
+                del resp  # 立即释放 HttpResponse 引用
                 _dt = (time.time() - _t) * 1000
                 if _dt > 1500:
-                    log.warning(f'[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {resp.status_code}')
-                if resp.status_code >= 400:
+                    log.warning(f'[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {status}')
+                if status >= 400:
                     try:
                         err = json.loads(body)
                     except Exception:
                         err = {
                             'message': body.decode(errors='replace'),
-                            'code': resp.status_code,
+                            'code': status,
                         }
+                    del body
                     if err.get('code') == _TOKEN_EXPIRED_CODE and attempt == 0:
                         await self._token_mgr.refresh_token()
                         await asyncio.sleep(0.1)
                         continue
                     return False, err
                 if body:
-                    return True, json.loads(body)
+                    result = json.loads(body)
+                    del body
+                    return True, result
                 return True, {}
             except Exception as e:
                 return False, {'message': str(e), 'code': -1}

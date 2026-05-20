@@ -37,9 +37,9 @@ class AsyncHttpClient:
         *,
         base_url='',
         timeout=30.0,
-        max_connections=200,
-        max_keepalive=75,
-        keepalive_expiry=30.0,
+        max_connections=100,
+        max_keepalive=50,
+        keepalive_expiry=20.0,
         follow_redirects=True,
     ):
         self._is_httpx = HAS_HTTPX
@@ -74,6 +74,9 @@ class AsyncHttpClient:
         if self._is_httpx:
             resp = await self._client.request(method, url, **kwargs)
             return HttpResponse(resp.status_code, resp.content, resp.headers)
+        t = kwargs.get('timeout')
+        if isinstance(t, int | float):
+            kwargs['timeout'] = aiohttp.ClientTimeout(total=t)
         async with self._client.request(method, url, **kwargs) as resp:
             body = await resp.read()
             return HttpResponse(resp.status, body, resp.headers)

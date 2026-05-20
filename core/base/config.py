@@ -6,6 +6,7 @@ import contextlib
 import copy
 import logging
 import os
+import re
 import threading
 import time
 
@@ -17,6 +18,13 @@ except ImportError as err:
 logger = logging.getLogger('ElainaBot.config')
 
 _CHECK_INTERVAL = 5.0
+_ENV_PATTERN = re.compile(r'\$\{(\w+)(?::([^}]*))?}')
+
+
+def _env_replacer(m):
+    return os.environ.get(m.group(1), m.group(2) if m.group(2) is not None else '')
+
+
 _MISSING = object()
 
 # 机器人设置内置默认值 (bot.yaml 中未配置时使用)
@@ -322,16 +330,9 @@ class ConfigManager:
     @staticmethod
     def _resolve_env_vars(text: str) -> str:
         """解析 ${VAR_NAME:default} 环境变量占位符"""
-        import re
-
-        _env_pattern = re.compile(r'\$\{(\w+)(?::([^}]*))?}')
-
-        def _replacer(m):
-            var = m.group(1)
-            default = m.group(2) if m.group(2) is not None else ''
-            return os.environ.get(var, default)
-
-        return _env_pattern.sub(_replacer, text)
+        if '${' not in text:
+            return text
+        return _ENV_PATTERN.sub(_env_replacer, text)
 
     @classmethod
     def _resolve_env_vars_recursive(cls, data):

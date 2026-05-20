@@ -29,11 +29,13 @@ class TokenManager:
         '_client',
         '_refresh_task',
         '_closed',
+        '_api_base',
     )
 
-    def __init__(self, appid, secret):
+    def __init__(self, appid, secret, *, api_base=''):
         self.appid = str(appid)
         self.secret = str(secret)
+        self._api_base = api_base.rstrip('/') if api_base else _API_BASE
         # 提前校验: secret 为空或含未解析占位符时立即报错
         if not self.secret or '${' in self.secret:
             raise ValueError(
@@ -49,7 +51,7 @@ class TokenManager:
 
     @property
     def api_base(self):
-        return _API_BASE
+        return self._api_base
 
     @property
     def authorization(self):
@@ -79,9 +81,9 @@ class TokenManager:
         return self._token and time.time() < self._expires_at - _REFRESH_BUFFER
 
     async def get_client(self):
-        """获取 HTTP 客户端 (延迟创建)"""
+        """获取 HTTP 客户端 (延迟创建, Sender 共享此实例)"""
         if self._client is None or self._client.is_closed:
-            self._client = AsyncHttpClient(timeout=10.0)
+            self._client = AsyncHttpClient(base_url=self._api_base, timeout=30.0)
         return self._client
 
     _ensure_client = get_client  # 内部兼容
@@ -92,7 +94,7 @@ class TokenManager:
         last_error = None
         for i in range(_MAX_RETRIES):
             try:
-                resp = await client.post(_TOKEN_URL, json=payload)
+                resp = await client.post(_TOKEN_URL, json=payload, timeout=10)
                 data = resp.json()
                 if resp.status_code == 200 and 'access_token' in data:
                     self._token = data['access_token']

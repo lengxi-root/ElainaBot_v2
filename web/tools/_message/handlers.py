@@ -79,20 +79,30 @@ async def handle_get_chats(request: web.Request):
                 chats = cached[1]
             else:
                 loop = asyncio.get_event_loop()
-                query_type = 'group' if chat_type == 'full_access' else chat_type
-                chats = await loop.run_in_executor(None, _aggregate_chats_sync, query_type, appid_filter, days)
-                if chat_type == 'user':
-                    ids = [c['chat_id'] for c in chats]
-                    nicks = await loop.run_in_executor(None, _batch_get_nicknames, ids)
-                    for c in chats:
-                        c['nickname'] = nicks.get(c['chat_id'], f'用户{c["chat_id"][-6:]}')
-                else:
+                if chat_type == 'full_access':
+                    # 全量群直接从 data.db 获取, 不依赖消息日志
                     fa_ids = _get_full_access_group_ids()
-                    for c in chats:
-                        c['nickname'] = f'群{c["chat_id"][-6:]}'
-                        c['is_full_access'] = c['chat_id'] in fa_ids
-                    if chat_type == 'full_access':
-                        chats = [c for c in chats if c['is_full_access']]
+                    bot = next(iter(_shared._bot_manager._bots.values()), None) if _shared._bot_manager else None
+                    appid_default = next(iter(_shared._bot_manager._bots), '') if _shared._bot_manager and _shared._bot_manager._bots else ''
+                    chats = [{
+                        'chat_id': gid,
+                        'appid': appid_filter or appid_default,
+                        'bot_name': getattr(bot, 'name', appid_default) if bot else '',
+                        'nickname': f'群{gid[-6:]}',
+                        'is_full_access': True,
+                    } for gid in fa_ids]
+                else:
+                    chats = await loop.run_in_executor(None, _aggregate_chats_sync, chat_type, appid_filter, days)
+                    if chat_type == 'user':
+                        ids = [c['chat_id'] for c in chats]
+                        nicks = await loop.run_in_executor(None, _batch_get_nicknames, ids)
+                        for c in chats:
+                            c['nickname'] = nicks.get(c['chat_id'], f'用户{c["chat_id"][-6:]}')
+                    else:
+                        fa_ids = _get_full_access_group_ids()
+                        for c in chats:
+                            c['nickname'] = f'群{c["chat_id"][-6:]}'
+                            c['is_full_access'] = c['chat_id'] in fa_ids
                 _chat_list_cache[cache_key] = (time.time(), chats)
 
     if search:

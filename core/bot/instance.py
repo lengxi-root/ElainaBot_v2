@@ -35,8 +35,8 @@ class BotInstance:
         self.name = self.appid
         self.secret = str(bot_cfg['secret'])
 
-        self.token_manager = TokenManager(self.appid, self.secret)
         custom_api_base = str(bot_cfg.get('api_base', '') or '')
+        self.token_manager = TokenManager(self.appid, self.secret, api_base=custom_api_base)
         self.sender = MessageSender(self.token_manager, custom_api_base=custom_api_base)
 
         # 日志服务
@@ -88,10 +88,8 @@ class BotInstance:
         """通过 GET /users/@me 获取机器人昵称"""
         try:
             token = await self.token_manager.get_token()
-            base = self.sender._base_url
-            url = f'{base}/users/@me'
             client = await self.token_manager.get_client()
-            resp = await client.get(url, headers={'Authorization': f'QQBot {token}'})
+            resp = await client.get('/users/@me', headers={'Authorization': f'QQBot {token}'})
             if resp.status_code == 200:
                 data = resp.json()
                 name = data.get('username', '')

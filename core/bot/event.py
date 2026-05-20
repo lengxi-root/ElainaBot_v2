@@ -16,7 +16,6 @@ from core.message.event import (
     GROUP_DEL_ROBOT,
     GROUP_MESSAGE_CREATE,
     INTERACTION_CREATE,
-    LIFECYCLE_TYPES,
     MESSAGE_AUDIT_PASS,
     MESSAGE_AUDIT_REJECT,
     MESSAGE_TYPES,
@@ -69,6 +68,8 @@ class EventHandlerMixin:
         self._group_users_cache = {}
         self._group_locks = {}
         self._full_access_cache = {}  # {group_id: expire_ts}
+        self._dirty_groups = {}  # {group_id: bot} — 待写入的群缓存
+        self._flush_task = None
 
     # ==================== 事件入口 ====================
 
@@ -141,8 +142,8 @@ class EventHandlerMixin:
             )
             return
 
-        # 未预设事件 → 记录到错误日志
-        if et not in MESSAGE_TYPES and et not in LIFECYCLE_TYPES and et != INTERACTION_CREATE and et not in SILENT_TYPES:
+        # 未预设事件 → 记录到错误日志 (LIFECYCLE/SILENT 已在上方 return)
+        if et not in MESSAGE_TYPES and et != INTERACTION_CREATE:
             raw_json = json.dumps(event.raw, ensure_ascii=False)
             report_error(
                 FRAMEWORK,
@@ -155,33 +156,24 @@ class EventHandlerMixin:
 
         # 消息日志 + 用户追踪 (消息事件和回调事件都记录)
         if et in MESSAGE_TYPES or et == INTERACTION_CREATE:
+            # json.dumps 移至轻量 dict 构造后, 仅序列化一次
+            msg_id = event.message_id or ''
+            uid = event.user_id or ''
+            gid = event.group_id or ''
+            content = event.content or ''
             raw_json = json.dumps(event.raw, ensure_ascii=False)
-            log_entry = {
-                'type': et,
-                'message_id': event.message_id or '',
-                'user_id': event.user_id or '',
-                'group_id': event.group_id or '',
-                'content': event.content or '',
-                'raw_message': raw_json,
-                'direction': 'receive',
-            }
-            bot.log_service.add_sync('message', log_entry)
-            self._push_web_log(
-                'message',
-                {
-                    'type': et,
-                    'message_id': event.message_id or '',
-                    'user_id': event.user_id or '',
-                    'group_id': event.group_id or '',
-                    'content': event.content or '',
-                    'direction': 'receive',
-                    'appid': appid,
-                    'bot_name': bot.name,
-                    'bot_qq': getattr(bot, 'robot_qq', '') or '',
-                    'event_type': et,
-                },
-            )
-            if event.user_id:
+            bot.log_service.add_sync('message', {
+                'type': et, 'message_id': msg_id, 'user_id': uid,
+                'group_id': gid, 'content': content,
+                'raw_message': raw_json, 'direction': 'receive',
+            })
+            self._push_web_log('message', {
+                'type': et, 'message_id': msg_id, 'user_id': uid,
+                'group_id': gid, 'content': content, 'direction': 'receive',
+                'appid': appid, 'bot_name': bot.name,
+                'bot_qq': getattr(bot, 'robot_qq', '') or '', 'event_type': et,
+            })
+            if uid:
                 asyncio.create_task(self._track_user(bot, event, appid))
 
         # 全量群记录
@@ -448,6 +440,24 @@ class EventHandlerMixin:
             entry['last_active'] = today
         return True
 
+    def _ensure_flush_task(self):
+        if self._flush_task is None or self._flush_task.done():
+            self._flush_task = asyncio.create_task(self._flush_dirty_groups())
+
+    async def _flush_dirty_groups(self):
+        while True:
+            await asyncio.sleep(30)
+            if not self._dirty_groups:
+                continue
+            batch, self._dirty_groups = self._dirty_groups, {}
+            for gid, bot in batch.items():
+                cached = self._group_users_cache.get(gid)
+                if cached:
+                    bot.log_service.db_queue(
+                        'UPDATE groups_users SET users=? WHERE group_id=?',
+                        (self._users_json(cached[1]), gid),
+                    )
+
     @staticmethod
     def _parse_user_map(raw_list):
         """将 DB 中的 users JSON 列表解析为 {uid: entry} dict"""
@@ -480,10 +490,8 @@ class EventHandlerMixin:
             expire_ts, user_map = cached
             if time.time() < expire_ts:
                 if self._upsert_group_user(user_map, uid, today):
-                    bot.log_service.db_queue(
-                        'UPDATE groups_users SET users=? WHERE group_id=?',
-                        (self._users_json(user_map), group_id),
-                    )
+                    self._dirty_groups[group_id] = bot
+                    self._ensure_flush_task()
                 return
             del self._group_users_cache[group_id]
 
