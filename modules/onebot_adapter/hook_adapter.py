@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 
@@ -49,7 +50,7 @@ class HookAdapter:
             async def patched_on_event(event):
                 bot = bm._bots.get(event.appid)
                 if bot and hooks.has('on_raw_event'):
-                    await hooks.emit('on_raw_event', event, bot)
+                    asyncio.create_task(hooks.emit('on_raw_event', event, bot))
                 await original(event)
 
             bm._on_event = patched_on_event
