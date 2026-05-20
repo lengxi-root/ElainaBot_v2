@@ -179,7 +179,7 @@ def set_context(bot_manager, base_dir: str):
     from web.tools._message.shared import set_context as _msg_set_ctx
 
     _msg_set_ctx(base_dir, bot_manager)
-    statistics_handler.set_context(bot_manager)
+    statistics_handler.set_context(bot_manager, base_dir)
     update_handler.set_context(base_dir)
     bot_restart.set_context(base_dir)
     system_info.set_context(bot_manager)

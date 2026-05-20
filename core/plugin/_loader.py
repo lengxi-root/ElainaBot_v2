@@ -87,13 +87,11 @@ class _LoaderMixin:
         loaded = skipped = large = 0
         for name in dirs:
             try:
-                if name in self._disabled_plugins:
-                    log.info(f'插件 [{name}] 已禁用, 跳过加载')
-                    skipped += 1
-                    continue
                 entry = self._find_large_entry(os.path.join(self._dir, name))
-                if entry and f'{name}/{os.path.basename(entry)[:-3]}' in self._disabled_plugins:
-                    log.info(f'插件 [{name}] 入口文件已禁用, 跳过加载')
+                # 禁用检查: 目录级 or 入口文件级
+                entry_key = f'{name}/{os.path.basename(entry)[:-3]}' if entry else ''
+                if name in self._disabled_plugins or (entry_key and entry_key in self._disabled_plugins):
+                    log.info(f'插件 [{name}] 已禁用, 跳过')
                     skipped += 1
                     continue
                 if entry:
@@ -116,9 +114,7 @@ class _LoaderMixin:
             get_logger(PLUGIN, name).error(f'[{name}]插件所在目录不存在: {plugin_dir}')
             return
         py_files = self._list_py_files(plugin_dir)
-        # 过滤单文件级禁用 (格式: 目录名/文件名)
-        disabled = getattr(self, '_disabled_plugins', set())
-        py_files = [p for p in py_files if f'{name}/{os.path.basename(p)[:-3]}' not in disabled]
+        py_files = [p for p in py_files if f'{name}/{os.path.basename(p)[:-3]}' not in self._disabled_plugins]
         if not py_files:
             get_logger(PLUGIN, name).error(f'[{name}]插件所在目录中无可用 .py 文件: {plugin_dir}')
             return
@@ -172,7 +168,7 @@ class _LoaderMixin:
         plugin_dir = os.path.join(self._dir, name)
         entry = self._find_large_entry(plugin_dir)
         if not entry:
-            get_logger(PLUGIN, name).error(f'[{name}]为大型插件（文件夹型插件），但入口不存在: {plugin_dir}')
+            get_logger(PLUGIN, name).error(f'[{name}]大型插件入口不存在: {plugin_dir}')
             return
         async with self._lock:
             if name in self._plugins:
@@ -184,27 +180,14 @@ class _LoaderMixin:
             start = time.time()
             module = self._import_plugin(name, plugin_dir, entry)
             h, lo, ul, ic = _collect_pending()
-            # 过滤被禁用的子模块 (如 system/app/stats)
-            disabled = getattr(self, '_disabled_plugins', set())
-            if disabled:
-                prefix = f'plugins.{name}.'
-                h = [x for x in h if _sub_key(x['func'], name, prefix) not in disabled]
-                ic = [x for x in ic if _sub_key(x['func'], name, prefix) not in disabled]
-            plugin = _finalize_plugin(
-                name,
-                plugin_dir,
-                module,
-                plugin_ctx,
-                h,
-                lo,
-                ul,
-                ic,
-                start,
-                is_large=True,
-            )
+            # 过滤禁用子模块
+            prefix = f'plugins.{name}.'
+            h = [x for x in h if _sub_key(x['func'], name, prefix) not in self._disabled_plugins]
+            ic = [x for x in ic if _sub_key(x['func'], name, prefix) not in self._disabled_plugins]
+            plugin = _finalize_plugin(name, plugin_dir, module, plugin_ctx, h, lo, ul, ic, start, is_large=True)
             await _run_hooks(plugin.on_load_funcs, name)
             self._plugins[name] = plugin
-            get_logger(PLUGIN, name).info(f'大型插件加载完成 ({len(plugin.handlers)} 个处理器, {plugin.load_time:.2f}s)')
+            get_logger(PLUGIN, name).info(f'大型插件加载完成 ({len(h)} 个处理器, {plugin.load_time:.2f}s)')
 
     async def reload(self, name):
         is_large = bool(self._find_large_entry(os.path.join(self._dir, name)))

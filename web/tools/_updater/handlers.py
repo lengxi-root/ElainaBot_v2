@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import cast
 
 from aiohttp import BodyPartReader, web
@@ -61,7 +61,7 @@ async def handle_get_changelog(request: web.Request):
             author = info.get('author', {})
             date_str = author.get('date', '')
             try:
-                fmt = datetime.fromisoformat(date_str.replace('Z', '+00:00')).strftime('%Y-%m-%d %H:%M:%S')
+                fmt = datetime.fromisoformat(date_str.replace('Z', '+00:00')).astimezone(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
             except Exception:
                 fmt = '未知时间'
             result.append(
