@@ -175,7 +175,7 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
             log.warning(f'保存禁用插件列表失败: {e}')
 
     def _migrate_ban_files(self):
-        """迁移旧版 .py.ban 文件: 自动纳入禁用列表并还原文件名"""
+        """迁移旧版 .py.ban → .py, 按粒度记录禁用: 大型→目录名, 小型→目录名/文件名"""
         plugins_dir = self._dir
         if not os.path.isdir(plugins_dir):
             return
@@ -185,16 +185,18 @@ class PluginManager(_LoaderMixin, _WatcherMixin, _DispatchMixin, _BlacklistMixin
                 if not f.endswith('.py.ban'):
                     continue
                 ban_path = os.path.join(root, f)
-                original = ban_path[:-4]  # 去掉 .ban
+                original = ban_path[:-4]
                 try:
                     os.rename(ban_path, original)
-                    rel = os.path.relpath(root, plugins_dir)
-                    plugin_name = rel.split(os.sep)[0] if rel != '.' else os.path.basename(root)
-                    self._disabled_plugins.add(plugin_name)
-                    migrated = True
-                    log.info(f'迁移 .ban 文件: {ban_path} → 已禁用插件 [{plugin_name}]')
                 except OSError as e:
                     log.warning(f'迁移 .ban 文件失败 [{ban_path}]: {e}')
+                    continue
+                rel = os.path.relpath(root, plugins_dir)
+                plugin_name = rel.split(os.sep)[0] if rel != '.' else os.path.basename(root)
+                key = f'{plugin_name}/{f[:-8]}'  # 统一格式: dir/file_stem
+                self._disabled_plugins.add(key)
+                migrated = True
+                log.info(f'迁移 .ban: {f} → 已禁用 [{key}]')
         if migrated:
             self._save_disabled_plugins()
 

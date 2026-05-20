@@ -27,57 +27,40 @@ async def handle_command(event, match):
 
 
 async def handle_toggle_plugin(request: web.Request):
-    """启用/禁用插件 (持久化到 data/plugins_disabled.json)"""
+    """启用/禁用插件文件 — 统一 key 格式: dir/file_stem
+
+    请求: {"name": "alone", "file": "示例插件", "action": "disable"}
+    入口文件禁用 = 整个大型插件禁用
+    """
     body = await request.json()
-    plugin_path = body.get('path', '')
-    plugin_name = body.get('name', '')
+    name = body.get('name', '')
+    file = body.get('file', '')
     action = body.get('action', '')
-
-    if action not in ('enable', 'disable'):
-        return web.json_response({'success': False, 'message': '参数错误'}, status=400)
-
-    # 优先使用 name (插件目录名), 否则从 path 推导
-    if not plugin_name and plugin_path:
-        plugin_path = os.path.normpath(plugin_path)
-        pdir = plugins_dir()
-        try:
-            rel = os.path.relpath(plugin_path, pdir)
-            plugin_name = rel.split(os.sep)[0]
-        except ValueError:
-            return web.json_response({'success': False, 'message': '无效路径'}, status=403)
-
-    if not plugin_name:
-        return web.json_response({'success': False, 'message': '缺少插件名或路径'}, status=400)
-
-    # 校验插件目录确实存在
-    pdir = plugins_dir()
-    plugin_dir = os.path.join(pdir, plugin_name)
-    if not os.path.isdir(plugin_dir):
-        return web.json_response({'success': False, 'message': f'插件目录不存在: {plugin_name}'}, status=404)
-
+    if not name or not file or action not in ('enable', 'disable'):
+        return web.json_response({'success': False, 'message': '参数不完整'}, status=400)
+    if not os.path.isdir(os.path.join(plugins_dir(), name)):
+        return web.json_response({'success': False, 'message': f'插件目录不存在: {name}'}, status=404)
     pm = get_pm()
     if not pm:
-        return web.json_response({'success': False, 'message': '框架未启动或插件管理器未初始化'}, status=503)
+        return web.json_response({'success': False, 'message': '插件管理器未初始化'}, status=503)
 
+    key = f'{name}/{file}'
     try:
-        if action == 'enable':
-            pm.enable_plugin(plugin_name)
-            if plugin_name not in pm.plugins:
-                # 插件在启动时被跳过, 现在加载
-                await pm.load(plugin_name)
-                pm._rebuild_handler_list()
-            label = '已启用'
+        (pm.enable_plugin if action == 'enable' else pm.disable_plugin)(key)
+        # 入口文件: 需加载/卸载整个插件; 子文件: 重载目录即可
+        is_entry = f'{file}.py' in ('main.py', 'index.py', 'app.py')
+        if is_entry:
+            if action == 'enable' and name not in pm.plugins:
+                await pm.reload(name)
+            elif action == 'disable' and name in pm.plugins:
+                await pm.unload(name)
         else:
-            pm.disable_plugin(plugin_name)
-            label = '已禁用'
-
-        return web.json_response({
-            'success': True,
-            'message': f'插件 {plugin_name} {label}',
-            'plugin_name': plugin_name,
-        })
+            if name in pm.plugins:
+                await pm.reload(name)
+        label = '已启用' if action == 'enable' else '已禁用'
+        return web.json_response({'success': True, 'message': f'{key} {label}', 'plugin_name': name})
     except Exception as e:
-        log.error(f'插件 {action} [{plugin_name}] 失败: {e}')
+        log.error(f'插件 {action} [{key}] 失败: {e}')
         return web.json_response({'success': False, 'message': f'操作异常: {e}'}, status=500)
 
 

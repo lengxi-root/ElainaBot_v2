@@ -67,6 +67,14 @@ def _read_plugin_meta(module):
     return {k: str(v) for k, v in raw.items() if k in allowed and v}
 
 
+def _sub_key(func, plugin_name, prefix):
+    """从 handler 函数的 __module__ 提取子模块禁用 key (如 system/app/stats)"""
+    mod = getattr(func, '__module__', '') or ''
+    if mod.startswith(prefix):
+        return f'{plugin_name}/{mod[len(prefix):].replace(".", "/")}'
+    return ''
+
+
 class _LoaderMixin:
     """插件加载/卸载/导入逻辑"""
 
@@ -83,7 +91,12 @@ class _LoaderMixin:
                     log.info(f'插件 [{name}] 已禁用, 跳过加载')
                     skipped += 1
                     continue
-                if self._find_large_entry(os.path.join(self._dir, name)):
+                entry = self._find_large_entry(os.path.join(self._dir, name))
+                if entry and f'{name}/{os.path.basename(entry)[:-3]}' in self._disabled_plugins:
+                    log.info(f'插件 [{name}] 入口文件已禁用, 跳过加载')
+                    skipped += 1
+                    continue
+                if entry:
                     await self._load_large(name)
                     large += 1
                 else:
@@ -103,8 +116,11 @@ class _LoaderMixin:
             get_logger(PLUGIN, name).error(f'[{name}]插件所在目录不存在: {plugin_dir}')
             return
         py_files = self._list_py_files(plugin_dir)
+        # 过滤单文件级禁用 (格式: 目录名/文件名)
+        disabled = getattr(self, '_disabled_plugins', set())
+        py_files = [p for p in py_files if f'{name}/{os.path.basename(p)[:-3]}' not in disabled]
         if not py_files:
-            get_logger(PLUGIN, name).error(f'[{name}]插件所在目录中无 .py 文件: {plugin_dir}')
+            get_logger(PLUGIN, name).error(f'[{name}]插件所在目录中无可用 .py 文件: {plugin_dir}')
             return
         async with self._lock:
             if name in self._plugins:
@@ -168,6 +184,12 @@ class _LoaderMixin:
             start = time.time()
             module = self._import_plugin(name, plugin_dir, entry)
             h, lo, ul, ic = _collect_pending()
+            # 过滤被禁用的子模块 (如 system/app/stats)
+            disabled = getattr(self, '_disabled_plugins', set())
+            if disabled:
+                prefix = f'plugins.{name}.'
+                h = [x for x in h if _sub_key(x['func'], name, prefix) not in disabled]
+                ic = [x for x in ic if _sub_key(x['func'], name, prefix) not in disabled]
             plugin = _finalize_plugin(
                 name,
                 plugin_dir,

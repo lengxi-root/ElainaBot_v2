@@ -85,14 +85,17 @@ def _scan_plugins():
             continue
         is_system = dir_name == 'system'
 
-        # 持久化禁用状态优先
-        persist_disabled = dir_name in disabled_set
+        # 持久化禁用状态: 目录级 或 入口文件级
         entry_path = find_entry(plugin_dir)
-        if not entry_path:
+        if entry_path:
+            entry_stem = os.path.basename(entry_path)[:-3]
+            persist_disabled = dir_name in disabled_set or f'{dir_name}/{entry_stem}' in disabled_set
+        else:
             py_files = [f for f in os.listdir(plugin_dir) if f.endswith('.py') and not f.startswith('_')]
             if not py_files:
                 continue
             entry_path = os.path.join(plugin_dir, py_files[0])
+            persist_disabled = dir_name in disabled_set
 
         pinfo = plugin_info_map.get(dir_name, {})
         mtime = datetime.fromtimestamp(os.path.getmtime(entry_path)).strftime('%Y-%m-%d %H:%M:%S')
@@ -128,20 +131,25 @@ def _scan_plugin_dirs():
     plugin_info_map = _get_plugin_info()
     bots_map = _get_plugin_bots_map()
     pm = get_pm()
-    disabled_set = pm.get_disabled_plugins() if pm else set()
+    disabled_set = set(pm.get_disabled_plugins()) if pm else set()
 
     for dir_name in sorted(os.listdir(pdir)):
         dir_path = os.path.join(pdir, dir_name)
         if not os.path.isdir(dir_path) or dir_name.startswith(('.', '__')):
             continue
         is_system = dir_name == 'system'
-        persist_disabled = dir_name in disabled_set
         pinfo = plugin_info_map.get(dir_name, {})
         files = _scan_py_files(dir_path)
 
-        # 标记文件级别的 enabled (持久化禁用则全部标记为 disabled)
-        if persist_disabled:
-            for f in files:
+        # 入口文件禁用 = 整体禁用
+        entry_file = next((f['name'] for f in files if f['name'] in ENTRY_CANDIDATES), None)
+        entry_key = f'{dir_name}/{entry_file[:-3]}' if entry_file else ''
+        persist_disabled = dir_name in disabled_set or entry_key in disabled_set
+
+        # 标记文件级别的 enabled
+        for f in files:
+            fname = f['name'][:-3] if f['name'].endswith('.py') else f['name']
+            if persist_disabled or f'{dir_name}/{fname}' in disabled_set:
                 f['enabled'] = False
 
         for f in files:
@@ -155,8 +163,9 @@ def _scan_plugin_dirs():
             app_dir = os.path.join(dir_path, 'app')
             if os.path.isdir(app_dir):
                 sub_files = _scan_py_files(app_dir, prefix='app/')
-                if persist_disabled:
-                    for f in sub_files:
+                for f in sub_files:
+                    stem = f['name'][:-3] if f['name'].endswith('.py') else f['name']
+                    if persist_disabled or f'{dir_name}/{stem}' in disabled_set:
                         f['enabled'] = False
                 files.extend(sub_files)
 
