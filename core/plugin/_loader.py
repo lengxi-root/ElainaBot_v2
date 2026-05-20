@@ -207,8 +207,8 @@ class _LoaderMixin:
             get_logger(PLUGIN, name).info(f'大型插件加载完成 ({len(plugin.handlers)} 个处理器, {plugin.load_time:.2f}s)')
 
     async def reload(self, name):
-        plugin = self._plugins.get(name)
-        await (self._load_large(name) if plugin and plugin.is_large else self.load(name))
+        is_large = bool(self._find_large_entry(os.path.join(self._dir, name)))
+        await (self._load_large(name) if is_large else self.load(name))
         self._rebuild_handler_list()
         pdir = os.path.join(self._dir, name)
         if os.path.isdir(pdir):
