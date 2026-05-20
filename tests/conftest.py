@@ -185,3 +185,168 @@ def app_instance():
     from core.application import Application
 
     return Application()
+
+
+# ==================== Phase 2: API 测试 Fixtures ====================
+
+
+def _reset_web_singletons():
+    """重置 web 模块的所有模块级全局状态, 确保测试隔离"""
+    import web.auth as _auth
+    import web.api as _api
+    import web.ws as _ws
+    from core.base.config import ConfigManager, cfg
+
+    # 重置 ConfigManager 单例
+    ConfigManager._instance = None
+    cfg._ready = False
+
+    # 重置 auth 模块全局状态
+    _auth.valid_sessions.clear()
+    _auth.ip_access_data.clear()
+    _auth._last_session_cleanup = 0
+    _auth._last_ip_cleanup = 0
+    _auth._data_dir = ''
+    _auth._ip_file = ''
+    _auth._session_file = ''
+    _auth._secret_file = ''
+
+    # 重置 api 模块全局状态
+    _api._bot_manager = None
+    _api._base_dir = ''
+
+
+@pytest.fixture
+def api_config_dir():
+    """创建临时 API 配置目录, 包含 settings.yaml + bot.yaml, 并初始化 web auth"""
+    import os
+    import yaml
+    import tempfile
+
+    _reset_web_singletons()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # settings.yaml
+        settings = {
+            'server': {'host': '0.0.0.0', 'port': 15200},
+            'web': {'access_token': 'test_token', 'admin_password': 'test_pass'},
+            'logging': {
+                'dir': 'log',
+                'insert_interval': 2,
+                'batch_size': 0,
+                'retention_days': 5,
+                'wal_mode': True,
+            },
+            'pip': {'auto_install': False, 'mirror': ''},
+        }
+        with open(os.path.join(tmpdir, 'settings.yaml'), 'w') as f:
+            yaml.dump(settings, f)
+
+        # bot.yaml
+        bots = {
+            'bots': [
+                {
+                    'appid': '123456',
+                    'secret': 'test_secret_123',
+                    'robot_qq': '987654321',
+                    'owner_ids': [''],
+                    'websocket': {'enabled': False},
+                    'message': {'use_markdown': True},
+                    'identity': {
+                        'use_union_id_for_group': False,
+                        'use_union_id_for_channel': False,
+                    },
+                    'welcome': {
+                        'group_welcome': False,
+                        'new_user_welcome': False,
+                        'friend_add_message': False,
+                    },
+                    'maintenance': {'enabled': False},
+                    'dedup': {'enabled': False},
+                    'blacklist': {
+                        'user_enabled': False,
+                        'group_enabled': False,
+                        'user_list': [],
+                        'group_list': [],
+                    },
+                    'non_at_message': {
+                        'enabled': False,
+                        'group_whitelist': [],
+                        'ignore_at_other_bot': False,
+                    },
+                }
+            ],
+        }
+        with open(os.path.join(tmpdir, 'bot.yaml'), 'w') as f:
+            yaml.dump(bots, f)
+
+        # 初始化 web auth (需要 base_dir 下存在 data/web/ 目录)
+        os.makedirs(os.path.join(tmpdir, 'data', 'web'), exist_ok=True)
+        import web.auth as _auth
+
+        _auth.init(tmpdir)
+
+        # 初始化 ConfigManager
+        from core.base.config import ConfigManager
+
+        ConfigManager._instance = None
+        mgr = ConfigManager()
+        mgr.init(tmpdir)
+
+        yield tmpdir
+
+
+@pytest.fixture
+def setup_app(api_config_dir):
+    """创建 aiohttp Application 并注册 API 路由"""
+    from aiohttp import web
+
+    import web.api as _api
+    import web.auth as _auth
+    from core.base.config import cfg
+
+    # 初始化 cfg (conftest 中 _reset_web_singletons 已清理)
+    cfg._ready = False
+    cfg.init(api_config_dir)
+
+    # 重新初始化 auth (使用测试配置目录)
+    _auth.init(api_config_dir)
+
+    # 设置 api 上下文
+    _api._bot_manager = None
+    _api._base_dir = api_config_dir
+
+    app = web.Application()
+    app.router.add_routes(_api.get_routes())
+    return app
+
+
+@pytest.fixture
+async def api_client(setup_app):
+    """返回 aiohttp TestClient (不依赖 pytest-aiohttp)"""
+    from aiohttp.test_utils import TestClient, TestServer
+
+    server = TestServer(setup_app)
+    await server.start_server()
+    client = TestClient(server)
+    await client.start_server()
+    yield client
+    await client.close()
+    await server.close()
+
+
+@pytest.fixture
+async def auth_headers(api_client):
+    """登录获取 token, 返回带 Authorization 的请求头"""
+    resp = await api_client.post('/api/auth/login', json={'password': 'test_pass'})
+    data = await resp.json()
+    token = data.get('token', '')
+    return {'Authorization': f'Bearer {token}'}
+
+
+@pytest.fixture
+async def auth_token(api_client):
+    """仅返回 token 字符串"""
+    resp = await api_client.post('/api/auth/login', json={'password': 'test_pass'})
+    data = await resp.json()
+    return data.get('token', '')
