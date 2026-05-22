@@ -21,10 +21,12 @@ CHUNK_THRESHOLD = 5 * 1024 * 1024  # 5MB
 
 async def upload_media_bytes(sender, file_bytes, file_type, endpoint, *, file_name=None):
     """上传媒体 bytes, 返回 file_info (>5MB 自动分片)"""
-    if not isinstance(file_bytes, bytes) or not file_bytes:
+    if not file_bytes:
+        return None
+    if not isinstance(file_bytes, bytes | str):
         return None
     # 大文件走分片 (带重试)
-    if len(file_bytes) > CHUNK_THRESHOLD:
+    if isinstance(file_bytes, bytes) and len(file_bytes) > CHUNK_THRESHOLD:
         last_err = None
         for retry in range(3):
             try:
@@ -42,8 +44,11 @@ async def upload_media_bytes(sender, file_bytes, file_type, endpoint, *, file_na
     req_data = {
         'srv_send_msg': False,
         'file_type': file_type,
-        'file_data': base64.b64encode(file_bytes).decode(),
     }
+    if isinstance(file_bytes, bytes):
+        req_data['file_data'] = base64.b64encode(file_bytes).decode()
+    elif isinstance(file_bytes, str):
+        req_data['url'] = file_bytes  # 兼容使用url来发送
     if file_name:
         req_data['file_name'] = file_name
     # 最多 2 次 (QQ API 偶发返回空 body)

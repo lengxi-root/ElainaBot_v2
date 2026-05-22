@@ -19,13 +19,14 @@ from modules.onebot_adapter.payload.payload_converter import PayloadConverter
 class MessageSenderService:
     """统一消息发送服务: 纯文本 / 图片 / 图文混合"""
 
-    @staticmethod
+    @classmethod
     async def send(
+        cls,
         sender: MessageSender,
         group_id: int | str | None,
         user_id: int | str | None,
         payload: str | dict[str, Any],
-        image_bytes: bytes | None,
+        image_bytes: bytes | str | None,
         msg_id: int | str | None,
     ) -> tuple[bool, Any]:
         """统一发送入口
@@ -37,17 +38,17 @@ class MessageSenderService:
         prefix = 'groups' if group_id else 'users'
 
         if image_bytes:
-            return await MessageSenderService._send_media(sender, target, prefix, payload, image_bytes, msg_id)
+            return await cls._send_media(sender, target, prefix, payload, image_bytes, msg_id)
+        return await cls._send_text(sender, group_id, user_id, target, payload, msg_id)
 
-        return await MessageSenderService._send_text(sender, group_id, user_id, target, payload, msg_id)
-
-    @staticmethod
+    @classmethod
     async def _send_media(
+        cls,
         sender: MessageSender,
         target: int | str,
         prefix: str,
         payload: str | dict[str, Any],
-        image_bytes: bytes,
+        image_bytes: str | bytes,
         msg_id: int | str | None,
     ) -> tuple[bool, Any]:
         file_info = await upload_media_bytes(sender, image_bytes, 1, f'/v2/{prefix}/{target}/files')
@@ -63,8 +64,9 @@ class MessageSenderService:
             media_payload['msg_id'] = msg_id
         return await sender.post_json(f'/v2/{prefix}/{target}/messages', media_payload)
 
-    @staticmethod
+    @classmethod
     async def _send_text(
+        cls,
         sender: MessageSender,
         group_id: int | str | None,
         user_id: int | str | None,

@@ -59,7 +59,12 @@ class SegmentParser:
                 texts.append(f'@{seg_data.get("qq", "")}')
                 continue
             if seg_type == 'image' and not image_bytes:
-                if file := seg_data.get('file', ''):
-                    image_bytes = ImageDecoder.decode(file)
+                file = seg_data.get('file') or seg_data.get('url')
+                if not file:
+                    continue
+                if file.startswith('http'):
+                    image_bytes = file
+                    continue
+                image_bytes = ImageDecoder.decode(file)
                 continue
         return ''.join(texts), image_bytes
