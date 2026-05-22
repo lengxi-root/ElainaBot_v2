@@ -35,13 +35,16 @@ async def _shutdown_tasks(tasks, stop_event):
 
 def _close_all_conns(conns, conn_locks=None):
     """WAL checkpoint + 关闭并清空所有 SQLite 连接 (加锁防止与 executor 写线程竞态)"""
-    for db_path, conn in conns.items():
+    for db_path in list(conns):
+        conn = conns.get(db_path)
+        if not conn:
+            continue
         lock = (conn_locks or {}).get(db_path)
         if lock:
             lock.acquire()
         try:
             with contextlib.suppress(Exception):
-                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
             with contextlib.suppress(Exception):
                 conn.close()
         finally:
