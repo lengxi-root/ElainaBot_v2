@@ -40,7 +40,7 @@ class SendMessageAction(BaseAction):
 
         payload, image_bytes = SegmentParser.parse(params.get('message', ''))
         if not payload and not image_bytes:
-            return self._fail('消息内容为空', echo=echo)
+            payload = '[发送了一条空消息]'
 
         sender = self._ctx.get_sender()
         if not sender:
