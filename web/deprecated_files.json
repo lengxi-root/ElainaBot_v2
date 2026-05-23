@@ -16,9 +16,5 @@
   "web/tools/system_info.py",
   "web/tools/update_handler.py",
   "web/tools/updater.py",
-  "tests/",
-  ".github/",
-  ".gitignore",
-  "pyproject.toml",
-  "LICENSE"
+  "bot_restarter.py"
 ]
