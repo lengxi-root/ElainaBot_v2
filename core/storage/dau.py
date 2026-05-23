@@ -41,7 +41,28 @@ class DAUService:
             return
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
+        asyncio.create_task(self._backfill_missing())
         log.info(f'已启动 [每日 {self._schedule_hour:02d}:{self._schedule_minute:02d}]')
+
+    async def _backfill_missing(self):
+        """启动时检查最近3天(不含今天)是否有遗漏的DAU, 补算并记录"""
+        await asyncio.sleep(5)  # 等待其他服务就绪
+        today = datetime.now().date()
+        appids = self.list_appids()
+        if not appids:
+            return
+        for i in range(1, 4):
+            date_str = (today - timedelta(days=i)).isoformat()
+            missing = []
+            for appid in appids:
+                if not await self.load(appid, date_str) and os.path.isfile(self._message_db_path(appid, date_str)):
+                    missing.append(appid)
+            if not missing:
+                continue
+            log.info(f'补算 {date_str} DAU: {len(missing)} 个机器人')
+            for appid in missing:
+                with contextlib.suppress(Exception):
+                    await self.regenerate(appid, date_str)
 
     async def stop(self):
         self._running = False
