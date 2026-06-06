@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import time
 
 from core.base.logger import FRAMEWORK, get_logger
 from core.network.http_compat import HAS_HTTPX
@@ -56,14 +55,10 @@ class _HttpMixin:
             if 'json' in kwargs:
                 headers.setdefault('Content-Type', 'application/json')
             try:
-                _t = time.time()
                 resp = await client.request(method, endpoint, headers=headers, **kwargs)
                 body = resp.content
                 status = resp.status_code
                 del resp  # 立即释放 HttpResponse 引用
-                _dt = (time.time() - _t) * 1000
-                if _dt > 1500:
-                    log.warning(f'[{self._appid}] API {_dt:.0f}ms {method} {endpoint} -> {status}')
                 if status >= 400:
                     try:
                         err = json.loads(body)
