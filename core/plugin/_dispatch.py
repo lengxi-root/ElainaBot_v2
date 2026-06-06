@@ -228,7 +228,6 @@ class _DispatchMixin:
         return False
 
     async def _run_handler(self, h, event, match, plugin_name, user_id, et, content):
-        t0 = time.time()
         try:
             fn = h['func']
             coro = fn(event, match) if h['is_coro'] else asyncio.get_running_loop().run_in_executor(None, fn, event, match)
@@ -259,9 +258,6 @@ class _DispatchMixin:
                 },
             )
         finally:
-            dt = time.time() - t0
-            if dt > 3:
-                log.warning(f'[性能] 处理器 [{plugin_name}] 耗时 {dt * 1000:.0f}ms content={content[:50]}')
             event.raw = event._reply_log_cb = None
 
     # ---------- 日志服务 ----------

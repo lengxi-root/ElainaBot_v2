@@ -152,8 +152,6 @@ class EventHandlerMixin:
                 context={'appid': appid, 'event_type': et, 'raw': raw_json},
             )
 
-        _t0 = time.time()
-
         # 消息日志 + 用户追踪 (消息事件和回调事件都记录)
         if et in MESSAGE_TYPES or et == INTERACTION_CREATE:
             # json.dumps 移至轻量 dict 构造后, 仅序列化一次
@@ -208,18 +206,6 @@ class EventHandlerMixin:
                     'source': '事件分发',
                     'content': str(e),
                     'event_type': et,
-                },
-            )
-        _dt = time.time() - _t0
-        if _dt > 1:
-            msg = f'[性能] 事件处理耗时 {_dt * 1000:.0f}ms content={event.content[:50] if event.content else ""}'
-            log.warning(msg)
-            self._push_web_log(
-                'framework',
-                {
-                    'appid': appid,
-                    'source': '性能',
-                    'content': msg,
                 },
             )
 
