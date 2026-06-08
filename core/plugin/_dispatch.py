@@ -26,14 +26,23 @@ _FULL_CHECK_TYPES = frozenset(
         'MESSAGE_CREATE',
     }
 )
-
-
 def _scene_mask(h):
     return (_S_GROUP if h['group_only'] else 0) | (_S_DIRECT if h['direct_only'] else 0) | (_S_CHANNEL if h['channel_only'] else 0)
 
 
 def _event_scene(event):
     return (_S_GROUP if event.is_group else 0) | (_S_DIRECT if event.is_direct else 0) | (_S_CHANNEL if event.is_channel else 0)
+
+
+def _strip_leading_bot_name_at(content, bot_name):
+    """全量消息中移除所有 @机器人名 文本, 仅用于 handler 匹配。"""
+    if not content or not bot_name:
+        return content
+    name = str(bot_name).strip()
+    prefix = f'@{name}'
+    if not name or prefix not in content:
+        return content
+    return content.replace(prefix, '').strip()
 
 
 # ==================== Mixin ====================
@@ -156,9 +165,13 @@ class _DispatchMixin:
         # 处理器匹配
         scene = _event_scene(event)
         handlers = self._handlers_for(et)
-        if self._match_handlers(handlers, content, event, appid, is_non_at, non_at_ok, scene, user_id, et, content):
+        handler_content = content
+        if is_group_msg and _get(appid, 'non_at_message.strip_bot_name_at', False):
+            handler_content = _strip_leading_bot_name_at(content, getattr(sender, '_bot_name', '') or '')
+
+        if self._match_handlers(handlers, handler_content, event, appid, is_non_at, non_at_ok, scene, user_id, et, content):
             return True
-        alt = content[1:] if content[:1] == '/' else '/' + content
+        alt = handler_content[1:] if handler_content[:1] == '/' else '/' + handler_content
         if self._match_handlers(handlers, alt, event, appid, is_non_at, non_at_ok, scene, user_id, et, content):
             return True
 
