@@ -540,8 +540,15 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
             code = data.get('code') if isinstance(data, dict) else None
             if code in _IGNORE_ERROR_CODES:
                 return False, None
-            msg = data.get('message', '') if isinstance(data, dict) else str(data)
-            log.info(f'[{self._appid}] 消息发送失败 [{code}] {msg}')
+            raw_event = getattr(event, 'raw', None)
+            report_error_raw(
+                FRAMEWORK,
+                '消息发送',
+                content=json.dumps(raw_event, ensure_ascii=False, default=str) if raw_event else (getattr(event, 'content', '') or ''),
+                tb=json.dumps(data, ensure_ascii=False, default=str) if data else '',
+                context=json.dumps(payload, ensure_ascii=False, default=str),
+                appid=self._appid,
+            )
             await self._handle_send_failure(endpoint, data, event)
             return False, data
 
