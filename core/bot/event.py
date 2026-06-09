@@ -211,35 +211,32 @@ class EventHandlerMixin:
     # ==================== 消息审核 ====================
 
     async def _handle_audit(self, bot, event, et):
-        """处理 MESSAGE_AUDIT_PASS / MESSAGE_AUDIT_REJECT"""
+        """记录 MESSAGE_AUDIT_PASS / MESSAGE_AUDIT_REJECT (仅信息记录)
+
+        主动消息发送时已直接返回消息 id (与被动消息一致), 不再依赖审核结果
+        事件回填或替换消息 id。WS 仍订阅这两个事件, 行为与 webhook 一致:
+        只记录, 不再做 audit_id -> message_id 的自动替换。
+        """
         d = event.raw.get('d', {}) if isinstance(event.raw, dict) else {}
         audit_id = d.get('audit_id', '')
-        real_msg_id = d.get('message_id', '')
         appid = event.appid
 
-        if et == MESSAGE_AUDIT_PASS and audit_id and real_msg_id:
-            log.debug(f'[{appid}] 审核通过: {audit_id} -> {real_msg_id}')
-            self._push_web_log(
-                'audit',
-                {
-                    'appid': appid,
-                    'audit_id': audit_id,
-                    'message_id': real_msg_id,
-                    'passed': True,
-                },
-            )
-
-        elif et == MESSAGE_AUDIT_REJECT and audit_id:
+        if et == MESSAGE_AUDIT_PASS:
+            log.debug(f'[{appid}] 消息审核通过: {audit_id}')
+        else:
             log.warning(f'[{appid}] 消息审核未通过: {audit_id}')
-            self._push_web_log(
-                'audit',
-                {
-                    'appid': appid,
-                    'audit_id': audit_id,
-                    'message_id': '',
-                    'passed': False,
-                },
-            )
+
+        raw_json = json.dumps(event.raw, ensure_ascii=False)
+        self._push_web_log(
+            'event',
+            {
+                'appid': appid,
+                'event_type': et,
+                'content': raw_json,
+                'raw_message': raw_json,
+                'bot_name': bot.name,
+            },
+        )
 
     # ==================== 全量群记录 ====================
 
