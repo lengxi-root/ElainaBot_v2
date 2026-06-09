@@ -542,6 +542,7 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
                 context=json.dumps(payload, ensure_ascii=False, default=str),
                 appid=self._appid,
             )
+            await self._send_api_error_notice(endpoint, event, data)
             return False, data
 
         self._log_sent(payload, event, content, media_label, data)
@@ -559,6 +560,38 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
                 },
             )
         return True, data
+
+    async def _send_api_error_notice(self, endpoint, event, data):
+        """消息发送失败时, 自动回发 api_error 错误提示模板 (尽力而为)
+
+        仅当配置了 api_error 模板时才发送。直接走 post_json, 不再经过
+        _send_with_error_handling, 避免提示本身失败时递归发送。
+        """
+        if event is None or tpl.get_raw('api_error', self._appid) is None:
+            return
+        if isinstance(data, dict):
+            code = data.get('code', '')
+            message = data.get('message', '')
+        else:
+            code, message = '', str(data)
+        use_md = cfg.get_bot_setting(self._appid, 'message.use_markdown', True)
+        content, buttons = tpl.render_error(
+            error_code=code,
+            error_message=message,
+            appid=self._appid,
+            use_markdown=use_md,
+            user_id=event.user_id or '',
+            group_id=event.group_id or '',
+        )
+        if not content:
+            return
+        notice_payload = self._build_payload(event, content, buttons, None, None)
+        try:
+            ok, resp = await self.post_json(endpoint, notice_payload)
+        except Exception:
+            return
+        if ok:
+            self._log_sent(notice_payload, event, content, '', resp)
 
     def _log_sent(self, payload, event, content, media_label='', resp_data=None):
         """发送成功后的日志记录 (Web面板 + 持久化)"""

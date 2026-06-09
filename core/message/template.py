@@ -33,10 +33,10 @@ class TemplateEngine:
 
         return str(raw), None
 
-    def render_error(self, error_code='', error_message='', appid=None, **variables):
+    def render_error(self, error_code='', error_message='', appid=None, use_markdown=False, **variables):
         """渲染 API 错误模板"""
         variables.update(error_code=error_code, error_message=error_message)
-        return self.render('api_error', appid=appid, **variables)
+        return self.render('api_error', use_markdown=use_markdown, appid=appid, **variables)
 
     def get_raw(self, template_name, appid=None):
         """获取原始模板数据(不渲染)"""
