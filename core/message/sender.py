@@ -262,7 +262,7 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
                 tb=f'endpoint: {endpoint}\npayload: {json.dumps(payload, ensure_ascii=False, default=str)[:500]}',
                 appid=self._appid,
             )
-            await self._send_api_error_notice(endpoint, data)
+            await self._handle_send_failure(endpoint, data)
         return ok, data, payload
 
     def _log_push(self, endpoint, payload, content, resp_data=None):
@@ -543,7 +543,7 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
                 context=json.dumps(payload, ensure_ascii=False, default=str),
                 appid=self._appid,
             )
-            await self._send_api_error_notice(endpoint, data, event)
+            await self._handle_send_failure(endpoint, data, event)
             return False, data
 
         self._log_sent(payload, event, content, media_label, data)
@@ -562,15 +562,31 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
             )
         return True, data
 
-    async def _send_api_error_notice(self, endpoint, data, event=None):
-        """发送失败时回发 api_error 模板: 被动用当前 msg_id 回复, 主动直接推送。
+    async def _handle_send_failure(self, endpoint, data, event=None):
+        """发送失败处理: 先回传插件(send_failed 钩子)做补救/拦截, 未拦截再回发 api_error 模板。
 
-        仅在配置了 api_error 模板时发送; 直接走 post_json 避免递归。
+        send_failed 为管道钩子: 插件返回 None 即视为已处理, 不再发送模板;
+        插件未注册或未拦截时, 配置了 api_error 模板则回发(被动用当前 msg_id, 主动直接推送)。
+        直接走 post_json 避免递归。
         """
-        if tpl.get_raw('api_error', self._appid) is None:
-            return
         code = data.get('code', '') if isinstance(data, dict) else ''
         message = data.get('message', '') if isinstance(data, dict) else str(data)
+
+        hooks = _get_hooks()
+        if hooks.has('send_failed'):
+            handled = await hooks.pipeline('send_failed', {
+                'endpoint': endpoint,
+                'data': data,
+                'event': event,
+                'appid': self._appid,
+                'code': code,
+                'message': message,
+            })
+            if handled is None:
+                return
+
+        if tpl.get_raw('api_error', self._appid) is None:
+            return
         content, buttons = tpl.render_error(
             error_code=code,
             error_message=message,
