@@ -3,6 +3,7 @@
 
 import asyncio
 import contextlib
+import contextvars
 import json
 import os
 import random
@@ -37,6 +38,11 @@ from core.module.hook import get_hook_manager as _get_hooks
 
 def _msg_seq():
     return random.randint(10000, 999999)
+
+
+# 标记当前是否已在「发送失败处理」链路内 (含插件补救 / api_error 模板回发),
+# 用于切断「补救消息又失败 -> 再次处理 -> 再次补救」的递归。
+_in_failure_handling = contextvars.ContextVar('_in_failure_handling', default=False)
 
 
 class MessageSender(_HttpMixin, _MediaSendMixin):
@@ -569,9 +575,19 @@ class MessageSender(_HttpMixin, _MediaSendMixin):
         插件未注册或未拦截时, 配置了 api_error 模板则回发(被动用当前 msg_id, 主动直接推送)。
         直接走 post_json 避免递归。
         """
+        # 已在失败处理链路内 (插件补救 / 模板回发又触发了失败): 只上报, 不再补救/发模板, 避免递归
+        if _in_failure_handling.get():
+            return
         code = data.get('code', '') if isinstance(data, dict) else ''
         message = data.get('message', '') if isinstance(data, dict) else str(data)
 
+        token = _in_failure_handling.set(True)
+        try:
+            await self._do_handle_send_failure(endpoint, data, event, code, message)
+        finally:
+            _in_failure_handling.reset(token)
+
+    async def _do_handle_send_failure(self, endpoint, data, event, code, message):
         hooks = _get_hooks()
         if hooks.has('send_failed'):
             handled = await hooks.pipeline('send_failed', {
