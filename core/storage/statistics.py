@@ -36,7 +36,6 @@ _USER_TABLE_SQL = """
         userid TEXT PRIMARY KEY,
         total_messages INTEGER DEFAULT 0,
         private_messages INTEGER DEFAULT 0,
-        total_commands INTEGER DEFAULT 0,
         group_messages TEXT DEFAULT '{}',
         command_stats TEXT DEFAULT '{}',
         daily_messages TEXT DEFAULT '{}',
@@ -48,9 +47,9 @@ _GROUP_TABLE_SQL = """
     CREATE TABLE IF NOT EXISTS group_stats (
         groupid TEXT PRIMARY KEY,
         total_messages INTEGER DEFAULT 0,
-        total_commands INTEGER DEFAULT 0,
         user_messages TEXT DEFAULT '{}',
         command_stats TEXT DEFAULT '{}',
+        daily_messages TEXT DEFAULT '{}',
         updated_at TEXT
     )
 """
@@ -258,9 +257,9 @@ class StatisticsService:
         """单遍扫描当日 receive 消息, 计算当日增量.
 
         返回 (user_delta, group_delta):
-          user_delta:  {uid: {'total','private','commands','groups':{gid:n},
+          user_delta:  {uid: {'total','private','groups':{gid:n},
                               'cmds':{cmd:n}, 'daily':{date:n}}}
-          group_delta: {gid: {'total','commands','users':{uid:n}, 'cmds':{cmd:n}}}
+          group_delta: {gid: {'total','users':{uid:n}, 'cmds':{cmd:n}, 'daily':{date:n}}}
         """
         conn = self._open_ro(db_path)
         if not conn:
@@ -283,7 +282,7 @@ class StatisticsService:
                     u = users.get(uid)
                     if u is None:
                         u = users[uid] = {
-                            'total': 0, 'private': 0, 'commands': 0,
+                            'total': 0, 'private': 0,
                             'groups': {}, 'cmds': {}, 'daily': {},
                         }
                     u['total'] += 1
@@ -293,20 +292,19 @@ class StatisticsService:
                     else:
                         u['groups'][gid] = u['groups'].get(gid, 0) + 1
                     if cmd:
-                        u['commands'] += 1
                         u['cmds'][cmd] = u['cmds'].get(cmd, 0) + 1
 
                 if not is_private:
                     g = groups.get(gid)
                     if g is None:
                         g = groups[gid] = {
-                            'total': 0, 'commands': 0, 'users': {}, 'cmds': {},
+                            'total': 0, 'users': {}, 'cmds': {}, 'daily': {},
                         }
                     g['total'] += 1
+                    g['daily'][date_str] = g['daily'].get(date_str, 0) + 1
                     if uid:
                         g['users'][uid] = g['users'].get(uid, 0) + 1
                     if cmd:
-                        g['commands'] += 1
                         g['cmds'][cmd] = g['cmds'].get(cmd, 0) + 1
             if not has_row:
                 return {}, {}
@@ -351,62 +349,73 @@ class StatisticsService:
             base[k] = base.get(k, 0) + v
         return json.dumps(base, ensure_ascii=False)
 
+    @staticmethod
+    def _fetch_existing(conn, table, pk_col, cols, pks):
+        """批量取已有行 (按主键分块 IN 查询), 返回 {pk: row_tuple}"""
+        existing = {}
+        col_sql = ', '.join((pk_col, *cols))
+        pks = list(pks)
+        for i in range(0, len(pks), 900):
+            chunk = pks[i:i + 900]
+            ph = ','.join('?' * len(chunk))
+            for row in conn.execute(
+                f"SELECT {col_sql} FROM {table} WHERE {pk_col} IN ({ph})", chunk
+            ):
+                existing[row[0]] = row[1:]
+        return existing
+
     def _merge_users(self, conn, day_user, now):
+        """批量累加用户统计: 一次性读已有行 + 内存合并 + executemany 写回"""
+        if not day_user:
+            return
+        cols = ('total_messages', 'private_messages', 'group_messages', 'command_stats', 'daily_messages')
+        existing = self._fetch_existing(conn, 'user_stats', 'userid', cols, day_user.keys())
+        rows = []
         for uid, d in day_user.items():
-            row = conn.execute(
-                "SELECT total_messages, private_messages, total_commands, "
-                "group_messages, command_stats, daily_messages "
-                "FROM user_stats WHERE userid=?",
-                (uid,),
-            ).fetchone()
-            if row:
-                total, private, cmds_n, g_json, c_json, daily_json = row
-            else:
-                total = private = cmds_n = 0
-                g_json = c_json = daily_json = '{}'
-            conn.execute(
-                """INSERT OR REPLACE INTO user_stats
-                   (userid, total_messages, private_messages, total_commands,
-                    group_messages, command_stats, daily_messages, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?)""",
-                (
-                    uid,
-                    total + d['total'],
-                    private + d['private'],
-                    cmds_n + d['commands'],
-                    self._add_maps(g_json, d['groups']),
-                    self._add_maps(c_json, d['cmds']),
-                    self._add_maps(daily_json, d['daily']),
-                    now,
-                ),
-            )
+            old = existing.get(uid)
+            total, private, g_json, c_json, daily_json = old if old else (0, 0, '{}', '{}', '{}')
+            rows.append((
+                uid,
+                total + d['total'],
+                private + d['private'],
+                self._add_maps(g_json, d['groups']),
+                self._add_maps(c_json, d['cmds']),
+                self._add_maps(daily_json, d['daily']),
+                now,
+            ))
+        conn.executemany(
+            """INSERT OR REPLACE INTO user_stats
+               (userid, total_messages, private_messages,
+                group_messages, command_stats, daily_messages, updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            rows,
+        )
 
     def _merge_groups(self, conn, day_group, now):
+        """批量累加群统计: 一次性读已有行 + 内存合并 + executemany 写回"""
+        if not day_group:
+            return
+        cols = ('total_messages', 'user_messages', 'command_stats', 'daily_messages')
+        existing = self._fetch_existing(conn, 'group_stats', 'groupid', cols, day_group.keys())
+        rows = []
         for gid, d in day_group.items():
-            row = conn.execute(
-                "SELECT total_messages, total_commands, user_messages, command_stats "
-                "FROM group_stats WHERE groupid=?",
-                (gid,),
-            ).fetchone()
-            if row:
-                total, cmds_n, u_json, c_json = row
-            else:
-                total = cmds_n = 0
-                u_json = c_json = '{}'
-            conn.execute(
-                """INSERT OR REPLACE INTO group_stats
-                   (groupid, total_messages, total_commands,
-                    user_messages, command_stats, updated_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (
-                    gid,
-                    total + d['total'],
-                    cmds_n + d['commands'],
-                    self._add_maps(u_json, d['users']),
-                    self._add_maps(c_json, d['cmds']),
-                    now,
-                ),
-            )
+            old = existing.get(gid)
+            total, u_json, c_json, daily_json = old if old else (0, '{}', '{}', '{}')
+            rows.append((
+                gid,
+                total + d['total'],
+                self._add_maps(u_json, d['users']),
+                self._add_maps(c_json, d['cmds']),
+                self._add_maps(daily_json, d['daily']),
+                now,
+            ))
+        conn.executemany(
+            """INSERT OR REPLACE INTO group_stats
+               (groupid, total_messages,
+                user_messages, command_stats, daily_messages, updated_at)
+               VALUES (?,?,?,?,?,?)""",
+            rows,
+        )
 
     # ===== 读取 (供 Web / 调试) =====
 
@@ -422,7 +431,7 @@ class StatisticsService:
             return None
 
     _USER_JSON_KEYS = ('group_messages', 'command_stats', 'daily_messages')
-    _GROUP_JSON_KEYS = ('user_messages', 'command_stats')
+    _GROUP_JSON_KEYS = ('user_messages', 'command_stats', 'daily_messages')
 
     async def get_user_stats(self, appid, userid):
         loop = asyncio.get_running_loop()
