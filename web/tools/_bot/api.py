@@ -422,6 +422,62 @@ class QQBotAPI:
             return {'code': -1, 'msg': resp.get('msg', '修改订阅失败')}
         return {'code': 0, 'msg': '操作成功'}
 
+    # ── 回调地址 (Webhook) ──
+
+    async def get_webhook(self, appid='', uin='', uid='', ticket=''):
+        if not all([appid, uin, uid, ticket]):
+            return {'code': 400, 'msg': '参数不完整'}
+        resp = await self._request(
+            'POST',
+            'https://bot.q.qq.com/cgi-bin/callback/get_webhook',
+            uin,
+            uid,
+            ticket,
+            {'bot_appid': str(appid)},
+            _BOT_HEADERS,
+        )
+        if resp.get('code') == 500:
+            return {'code': 500, 'msg': resp.get('msg')}
+        if resp.get('retcode') != 0:
+            return {'code': -1, 'msg': resp.get('msg', '获取回调地址失败')}
+        return {'code': 0, 'data': resp.get('data', {})}
+
+    async def check_webhook(self, appid='', webhook_url='', uin='', uid='', ticket=''):
+        if not all([appid, webhook_url]):
+            return {'code': 400, 'msg': '参数不完整'}
+        resp = await self._request(
+            'POST',
+            'https://bot.q.qq.com/cgi-bin/callback/check_webhook',
+            uin,
+            uid,
+            ticket,
+            {'bot_appid': str(appid), 'webhook_url': webhook_url},
+            _BOT_HEADERS,
+        )
+        if resp.get('code') == 500:
+            return {'code': 500, 'msg': resp.get('msg')}
+        if resp.get('retcode') != 0:
+            return {'code': resp.get('retcode', -1), 'msg': resp.get('msg', '地址校验未通过')}
+        return {'code': 0, 'msg': '地址校验通过'}
+
+    async def set_webhook(self, appid='', webhook_url='', qrcode='', uin='', uid='', ticket=''):
+        if not all([appid, webhook_url, qrcode]):
+            return {'code': 400, 'msg': '参数不完整'}
+        resp = await self._request(
+            'POST',
+            'https://bot.q.qq.com/cgi-bin/callback/set_webhook',
+            uin,
+            uid,
+            ticket,
+            {'bot_appid': str(appid), 'webhook_url': webhook_url, 'qr_code': qrcode},
+            _BOT_HEADERS,
+        )
+        if resp.get('code') == 500:
+            return {'code': 500, 'msg': resp.get('msg')}
+        if resp.get('retcode') != 0:
+            return {'code': -1, 'msg': resp.get('msg', '设置回调地址失败')}
+        return {'code': 0, 'msg': '操作成功'}
+
 
 _api = None
 

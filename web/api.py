@@ -153,6 +153,11 @@ def get_routes() -> list:
         web.post('/api/openapi/events', _(openapi_handler.handle_get_event_list)),
         web.post('/api/openapi/events/auth-qr', _(openapi_handler.handle_get_event_auth_qr)),
         web.post('/api/openapi/events/modify', _(openapi_handler.handle_modify_event_subscription)),
+        web.post('/api/openapi/webhook', _(openapi_handler.handle_get_webhook)),
+        web.post('/api/openapi/webhook/suggest', _(openapi_handler.handle_webhook_suggest)),
+        web.post('/api/openapi/webhook/check', _(openapi_handler.handle_check_webhook)),
+        web.post('/api/openapi/webhook/auth-qr', _(openapi_handler.handle_get_webhook_auth_qr)),
+        web.post('/api/openapi/webhook/set', _(openapi_handler.handle_set_webhook)),
         # ── 自定义页面 ──
         web.get('/api/web-pages', _(handle_get_web_pages)),
         web.get('/api/web-pages/{key}', _(handle_get_web_page_html)),
@@ -187,7 +192,7 @@ def set_context(bot_manager, base_dir: str):
     update_handler.set_context(base_dir)
     bot_restart.set_context(base_dir)
     system_info.set_context(bot_manager)
-    openapi_handler.set_context(base_dir)
+    openapi_handler.set_context(base_dir, bot_manager)
     _market_shared.set_context(base_dir)
     database_browser.set_context(bot_manager, base_dir)
 
