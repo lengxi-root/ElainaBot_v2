@@ -214,7 +214,7 @@ async def filter_keywords(event):
 | `event.event_id` | `str` | 事件 ID |
 | `event.guild_id` | `str` | 频道服务器 ID (频道场景) |
 | `event.interaction_data` | `dict` | 交互回调数据 (仅 INTERACTION 事件) |
-| `event.callback_code` | `int` / `None` | 交互回调 (op12 ACK) 状态码, 见 5.8 |
+| `event.callback_code` | `int` / `None` | 交互回调状态码, 见 5.8 |
 | `event.message_reference_id` | `str` | 可引用的 REFIDX (用于引用回复, 见 5.7) |
 | `event.message_scene` | `dict` | 消息场景信息 (`source` / `ext` 等) |
 
@@ -418,28 +418,18 @@ await event.send_to_channel("指定频道ID", "频道消息")
 
 #### 不依赖 event 的主动推送
 
-`send_to_group / send_to_user / send_to_channel / send_image` **不读取 event 的任何字段**, `event.xxx` 只是 handler 里手边正好有 event 的便捷写法。在没有 event 的场景 (定时任务、`@on_load` 后台循环、外部触发的推送) 直接取一个 `sender` 调用即可:
+`send_to_*` 不读取 event 字段, `event.send_to_*` 只是便捷写法。没有 event 时 (定时任务、`@on_load` 后台循环) 取一个 `sender` 直接调用:
 
 ```python
 from core.bot.manager import _bot_manager_ref
 
+# 取任意可用 bot 的 sender (指定 appid: _bot_manager_ref.get_bot(appid).sender)
+sender = next(iter(_bot_manager_ref._bots.values())).sender
 
-def get_sender():
-    """取任意可用 bot 的 MessageSender (用于主动推送)"""
-    bots = _bot_manager_ref._bots if _bot_manager_ref else None
-    return next(iter(bots.values())).sender if bots else None
-
-
-# 指定 appid 时: sender = _bot_manager_ref.get_bot(appid).sender
-
-sender = get_sender()
-if sender:
-    await sender.send_to_group("群ID", "通知内容")
-    await sender.send_to_user("用户ID", "私信内容")
-    await sender.send_to_channel("频道ID", "频道消息")
+await sender.send_to_group("群ID", "通知内容")
+await sender.send_to_user("用户ID", "私信内容")
+await sender.send_to_channel("频道ID", "频道消息")
 ```
-
-> 返回值见 [5.7 引用消息与发送返回值](#57-引用消息与发送返回值)。
 
 ### 5.7 引用消息与发送返回值
 
@@ -484,14 +474,14 @@ await event.recall()
 await event.recall(message_id="xxx")
 ```
 
-**交互回调 (op12 ACK)** — 回调按钮 (`type=1`) 被点击时下发 `INTERACTION_CREATE` 事件, 此时 `event.content` 即按钮的 `data`。推荐用 `set_callback_code` 随 op12 ACK 直接返回状态码 (无需额外 REST 请求):
+**交互回调** — 回调按钮 (`type=1`) 被点击时下发 `INTERACTION_CREATE` 事件, 此时 `event.content` 即按钮的 `data`。用 `set_callback_code` 应答这次点击:
 
 ```python
 @handler(r'^my_btn$', event_types=['INTERACTION_CREATE'])
 async def on_click(event, match):
-    event.set_callback_code(0)     # 0=成功 1=操作失败 2=操作频繁 3=重复操作 4=没有权限 5=仅管理员
+    event.set_callback_code(0)     # 应答这次交互
     # event.set_ack_timeout(15)    # 需更久处理时, 先延长等待(秒)再设置 code
-    # 未调用 set_callback_code 时, 框架在分发结束/超时后用默认 code 兜底
+    # 未调用时, 框架会自动用默认 code 应答
 
 # 旧式 REST 应答 (会额外发一次请求, 一般无需使用)
 await event.ack_interaction(code=0)
