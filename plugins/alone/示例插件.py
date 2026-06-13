@@ -113,6 +113,24 @@ async def send_buttons(event, match):
     await event.reply("📌 按钮功能演示", buttons=buttons)
 
 
+# ==================== 交互回调 (op12 ACK) 示例 ====================
+# type=1 回调按钮被点击时下发 INTERACTION_CREATE 事件, event.content 即按钮的 data。
+# 插件可调用 event.set_callback_code(n) 自定义返回客户端的状态码 (随 op12 ACK 立即返回,
+# 无需额外 REST 请求), 常用 code: 0=成功 1=操作失败 2=操作频繁 3=重复操作 4=没有权限 5=仅管理员。
+# 未调用时框架在分发结束/超时后用默认 code 兜底; 需更久处理可先 event.set_ack_timeout(秒)。
+
+@handler(r'^交互按钮$', name='交互按钮', desc='发送回调按钮, 点击触发 INTERACTION_CREATE', owner_only=True)
+async def send_interaction_button(event, match):
+    buttons = [[{'text': '点我回调', 'data': 'demo_ack', 'type': 1}]]
+    await event.reply("📌 点击下方按钮触发交互回调", buttons=buttons)
+
+
+@handler(r'^demo_ack$', name='交互回调演示', desc='回调按钮点击 → 返回 op12 ACK 状态码',
+         event_types=['INTERACTION_CREATE'])
+async def on_demo_ack(event, match):
+    event.set_callback_code(0)  # 0=成功; 立即随 op12 ACK 返回, 之后仍可继续处理
+
+
 # ==================== 引用消息示例 ====================
 # message_reference_id 要传 QQ message_scene.ext 里的 REFIDX_xxx。
 # 不是 event.message_id 里的 ROBOT1.0_xxx。框架会自动组装为:
@@ -299,6 +317,29 @@ async def test_send_to_group(event, match):
         await event.reply(f"✅ 已发送主动群消息\n目标群: {gid[:8]}****")
     else:
         await event.reply(f"❌ 发送失败: {data.get('message', '未知错误')}")
+
+
+# ==================== 无 event 主动推送示例 ====================
+# send_to_group / send_to_user / send_to_channel 不依赖 event, 内部直接透传到 sender。
+# 在定时任务 / @on_load 后台循环等没有 event 的场景, 取任意可用 bot 的 sender 调用即可。
+
+def _get_any_sender():
+    from core.bot.manager import _bot_manager_ref
+    bots = _bot_manager_ref._bots if _bot_manager_ref else None
+    return next(iter(bots.values())).sender if bots else None
+
+
+@handler(r'^无event群发\s+(\S+)\s+(.+)$', name='无event主动群发',
+         desc='不借助 event, 直接用 sender 向指定群推送', owner_only=True)
+async def send_without_event(event, match):
+    gid, content = match.group(1), match.group(2)
+    sender = _get_any_sender()
+    if not sender:
+        return await event.reply("❌ 无可用 bot 实例")
+    ok, data, _ = await sender.send_to_group(gid, content)
+    await event.reply(
+        f"✅ 已通过 sender 直接发送到 {gid[:8]}****" if ok
+        else f"❌ 发送失败: {data.get('message', '未知错误') if isinstance(data, dict) else data}")
 
 
 @handler(r'^主动图片$', name='主动图片', desc='向当前会话主动发送图片', owner_only=True)
