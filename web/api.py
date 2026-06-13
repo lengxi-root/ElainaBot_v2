@@ -150,6 +150,9 @@ def get_routes() -> list:
             '/api/openapi/whitelist/batch-add',
             _(openapi_handler.handle_batch_add_whitelist),
         ),
+        web.post('/api/openapi/events', _(openapi_handler.handle_get_event_list)),
+        web.post('/api/openapi/events/auth-qr', _(openapi_handler.handle_get_event_auth_qr)),
+        web.post('/api/openapi/events/modify', _(openapi_handler.handle_modify_event_subscription)),
         # ── 自定义页面 ──
         web.get('/api/web-pages', _(handle_get_web_pages)),
         web.get('/api/web-pages/{key}', _(handle_get_web_page_html)),
