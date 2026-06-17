@@ -127,7 +127,8 @@ from core.plugin.decorators import handler, on_load, on_unload, interceptor
 | `AT_MESSAGE_CREATE` | 频道 @ 机器人 |
 | `MESSAGE_CREATE` | 频道公开消息 |
 | `INTERACTION_CREATE` | 按钮/交互回调 |
-| `GROUP_ADD_ROBOT` / `GROUP_DEL_ROBOT` | 加群/退群 |
+| `GROUP_ADD_ROBOT` / `GROUP_DEL_ROBOT` | 机器人加群/退群 |
+| `GROUP_MEMBER_ADD` / `GROUP_MEMBER_REMOVE` | 群成员入群/退群 |
 | `GROUP_MSG_REJECT` / `GROUP_MSG_RECEIVE` | 群消息拒绝/恢复 |
 | `FRIEND_ADD` / `FRIEND_DEL` | 加好友/删好友 |
 | `MESSAGE_REACTION_ADD` / `MESSAGE_REACTION_REMOVE` | 表态(表情回应)添加/移除 |

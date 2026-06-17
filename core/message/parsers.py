@@ -82,6 +82,7 @@ def parse_message_generic(event, d):
     event.raw_user_id = event.user_id
     event.username = author.get('username', '')
     event.member_openid = author.get('member_openid', '')
+    event.member_role = author.get('member_role', '')
     event.union_openid = author.get('union_openid', '')
     event.is_bot = author.get('bot', False)
 
@@ -230,6 +231,20 @@ def parse_group_del_robot(event, d):
     """退群事件解析"""
     _parse_lifecycle_base(event, d, 'op_member_openid')
     event.content = f'机器人被移出群聊 {event.group_id}'
+
+
+def parse_group_member_add(event, d):
+    """用户入群事件解析"""
+    _parse_lifecycle_base(event, d, 'member_openid')
+    event.member_openid = event.user_id
+    event.content = f'用户 {event.user_id} 加入群聊 {event.group_id}'
+
+
+def parse_group_member_remove(event, d):
+    """用户退群事件解析"""
+    _parse_lifecycle_base(event, d, 'member_openid')
+    event.member_openid = event.user_id
+    event.content = f'用户 {event.user_id} 退出群聊 {event.group_id}'
 
 
 def _extract_sharer_id(scene_param):

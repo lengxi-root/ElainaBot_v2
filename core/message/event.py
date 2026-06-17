@@ -13,6 +13,8 @@ from core.message.parsers import (
     parse_friend_del,
     parse_group_add_robot,
     parse_group_del_robot,
+    parse_group_member_add,
+    parse_group_member_remove,
     parse_group_message,
     parse_interaction,
     parse_message_generic,
@@ -41,6 +43,10 @@ GROUP_ADD_ROBOT = 'GROUP_ADD_ROBOT'
 GROUP_DEL_ROBOT = 'GROUP_DEL_ROBOT'
 GROUP_MSG_REJECT = 'GROUP_MSG_REJECT'
 GROUP_MSG_RECEIVE = 'GROUP_MSG_RECEIVE'
+
+# 群成员 (用户入群/退群)
+GROUP_MEMBER_ADD = 'GROUP_MEMBER_ADD'
+GROUP_MEMBER_REMOVE = 'GROUP_MEMBER_REMOVE'
 
 # 表态
 MESSAGE_REACTION_ADD = 'MESSAGE_REACTION_ADD'
@@ -78,6 +84,8 @@ LIFECYCLE_TYPES = frozenset(
         GROUP_DEL_ROBOT,
         GROUP_MSG_REJECT,
         GROUP_MSG_RECEIVE,
+        GROUP_MEMBER_ADD,
+        GROUP_MEMBER_REMOVE,
     }
 )
 REACTION_TYPES = frozenset({MESSAGE_REACTION_ADD, MESSAGE_REACTION_REMOVE})
@@ -93,7 +101,7 @@ _MSG_ID_TYPES = frozenset(
         DIRECT_MESSAGE_CREATE,
     }
 )
-_EVENT_ID_TYPES = frozenset({INTERACTION_CREATE, GROUP_ADD_ROBOT, FRIEND_ADD})
+_EVENT_ID_TYPES = frozenset({INTERACTION_CREATE, GROUP_ADD_ROBOT, FRIEND_ADD, GROUP_MEMBER_ADD})
 
 # 回复端点模板 (event_type -> lambda event: endpoint_str)
 _REPLY_ENDPOINTS = {
@@ -116,6 +124,8 @@ _PARSERS = {
     INTERACTION_CREATE: parse_interaction,
     GROUP_ADD_ROBOT: parse_group_add_robot,
     GROUP_DEL_ROBOT: parse_group_del_robot,
+    GROUP_MEMBER_ADD: parse_group_member_add,
+    GROUP_MEMBER_REMOVE: parse_group_member_remove,
     FRIEND_ADD: parse_friend_add,
     FRIEND_DEL: parse_friend_del,
 }
@@ -156,6 +166,7 @@ class Event:
         'raw_user_id',
         'username',
         'member_openid',
+        'member_role',
         'union_openid',
         'is_bot',
         'group_id',
@@ -207,6 +218,7 @@ class Event:
         self.raw_user_id = None
         self.username = None
         self.member_openid = None
+        self.member_role = ''
         self.union_openid = None
         self.is_bot = None
         self.group_id = None
@@ -329,7 +341,7 @@ class Event:
         et = self.event_type
         if et == INTERACTION_CREATE:
             return self._fallback_msg_ep(strict=True) or f'/interactions/{self.message_id}'
-        if et in (GROUP_ADD_ROBOT, FRIEND_ADD):
+        if et in (GROUP_ADD_ROBOT, FRIEND_ADD, GROUP_MEMBER_ADD):
             return self._fallback_msg_ep()
         return ''
 
