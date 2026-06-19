@@ -334,7 +334,8 @@ async def handle_toggle_bot(request: web.Request):
         return web.json_response({'success': False, 'error': '未找到该机器人'}, status=404)
 
     cfg.set_value('bot', 'bots', bot_configs)
-    return web.json_response({'success': True, 'message': f'机器人 {appid} 已{"\u542f\u7528" if enabled else "\u5173\u95ed"}'})
+    status = "启用" if enabled else "关闭"
+    return web.json_response({'success': True, 'message': f'机器人 {appid} 已{status}'})
 
 
 
