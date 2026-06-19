@@ -46,6 +46,7 @@ def get_routes() -> list:
         web.get('/api/auth/password-status', _(handle_password_status)),
         # ── 机器人 ──
         web.get('/api/bots', _(handle_get_bots)),
+        web.post('/api/bots/toggle', _(handle_toggle_bot)),
         web.get('/api/robot/info', _(robot_info.handle_get_robot_info)),
         web.get('/api/robot/qrcode', robot_info.handle_get_robot_qrcode),
         # ── 系统信息 ──
@@ -259,9 +260,14 @@ async def handle_password_status(request: web.Request):
 
 
 async def handle_get_bots(request: web.Request):
+    from core.base.config import cfg
+
     bots = []
+    # 已启动的机器人
+    running_appids = set()
     if _bot_manager:
         for appid, inst in _bot_manager._bots.items():
+            running_appids.add(appid)
             ws_connected = False
             if inst.ws_client:
                 ws_connected = bool(getattr(inst.ws_client, '_session_id', None))
@@ -278,9 +284,58 @@ async def handle_get_bots(request: web.Request):
                     'avatar': avatar,
                     'connected': ws_connected,
                     'connection_type': 'WebSocket' if inst.ws_client else 'Webhook',
+                    'enabled': True,
+                }
+            )
+    # 未启动的机器人 (已关闭)
+    for bc in cfg.get_bot_configs():
+        appid = str(bc.get('appid', ''))
+        if appid and bc.get('secret') and appid not in running_appids:
+            robot_qq = str(bc.get('robot_qq', ''))
+            avatar = f'http://q1.qlogo.cn/g?b=qq&nk={robot_qq}&s=100' if robot_qq else ''
+            bots.append(
+                {
+                    'appid': appid,
+                    'name': appid,
+                    'robot_qq': robot_qq,
+                    'bot_id': '',
+                    'avatar': avatar,
+                    'connected': False,
+                    'connection_type': '-',
+                    'enabled': bc.get('enabled', True),
                 }
             )
     return web.json_response({'success': True, 'bots': bots})
+
+
+async def handle_toggle_bot(request: web.Request):
+    """切换机器人 enabled 开关"""
+    from core.base.config import cfg
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({'success': False, 'error': '请求格式错误'}, status=400)
+
+    appid = str(body.get('appid', ''))
+    enabled = body.get('enabled')
+    if not appid or enabled is None:
+        return web.json_response({'success': False, 'error': '缺少 appid 或 enabled 参数'}, status=400)
+
+    bot_configs = cfg.get('bot', 'bots') or []
+    found = False
+    for bc in bot_configs:
+        if str(bc.get('appid', '')) == appid:
+            bc['enabled'] = bool(enabled)
+            found = True
+            break
+
+    if not found:
+        return web.json_response({'success': False, 'error': '未找到该机器人'}, status=404)
+
+    cfg.set_value('bot', 'bots', bot_configs)
+    return web.json_response({'success': True, 'message': f'机器人 {appid} 已{"\u542f\u7528" if enabled else "\u5173\u95ed"}'})
+
 
 
 def _iter_bots(appid_filter=''):

@@ -150,6 +150,8 @@ class Application(EventHandlerMixin):
 
         bot_configs = cfg.get_bot_configs()
         valid_bots = [b for b in bot_configs if b.get('appid') and b.get('secret')]
+        enabled_bots = [b for b in valid_bots if b.get('enabled', True)]
+        disabled_bots = [b for b in valid_bots if not b.get('enabled', True)]
         if not valid_bots:
             log.warning('未配置有效的机器人, 仅启动 Web 面板')
             # 输出诊断信息: 哪个 bot 配置缺失了哪些字段
@@ -161,6 +163,8 @@ class Application(EventHandlerMixin):
                     missing.append('secret (请通过 Web 面板配置)')
                 if missing:
                     log.warning(f'  bot 配置不完整: {b.get("appid", "?")} — 缺失 {", ".join(missing)}')
+        for b in disabled_bots:
+            log.info(f'机器人 {b.get("appid", "?")} 已关闭, 跳过启动')
 
         # 2) HTTP 应用
         from core.server.http_server import HttpServer
@@ -200,7 +204,7 @@ class Application(EventHandlerMixin):
             push_web_log=self._push_web_log,
             media_dir=self._media_dir,
         )
-        if valid_bots:
+        if enabled_bots:
             await self._bot_registry.start_all()
 
         cfg.on_change('bot', self._bot_registry.on_config_change)

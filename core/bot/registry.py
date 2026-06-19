@@ -38,13 +38,20 @@ class BotRegistry:
     # ---------- 启动 ----------
 
     async def start_all(self):
-        """启动所有有效机器人"""
+        """启动所有有效且启用的机器人"""
         bot_configs = cfg.get_bot_configs()
         valid = [b for b in bot_configs if b.get('appid') and b.get('secret')]
         if not valid:
             log.warning('未配置有效的机器人')
             return
-        results = await asyncio.gather(*(self._start_one(bc) for bc in valid), return_exceptions=True)
+        enabled = [b for b in valid if b.get('enabled', True)]
+        disabled = [b for b in valid if not b.get('enabled', True)]
+        for b in disabled:
+            log.info(f'机器人 {b["appid"]} 已关闭, 跳过启动')
+        if not enabled:
+            log.warning('所有机器人均已关闭')
+            return
+        results = await asyncio.gather(*(self._start_one(bc) for bc in enabled), return_exceptions=True)
         count = sum(1 for r in results if r is not None and not isinstance(r, Exception))
         log.info(f'已启动 {count} 个机器人')
 
@@ -71,18 +78,23 @@ class BotRegistry:
             asyncio.get_running_loop().create_task(self._sync())
 
     async def _sync(self):
-        """同步 bot 配置: 新增/移除/更新 WebSocket"""
+        """同步 bot 配置: 新增/移除/更新 WebSocket, 尊重 enabled 开关"""
         valid = {str(b['appid']): b for b in cfg.get_bot_configs() if b.get('appid') and b.get('secret')}
         current = set(self._bots)
-        target = set(valid)
+        # 仅启用的机器人才作为目标集合
+        target = {aid for aid, b in valid.items() if b.get('enabled', True)}
 
-        # 移除
+        # 移除 (配置删除 或 被关闭)
         for appid in current - target:
             bot = self._bots.pop(appid)
             await bot.stop()
-            self._push_web_log('framework', {'content': f'热重载: {bot.name} ({appid}) 已移除'})
+            bc = valid.get(appid)
+            if bc and not bc.get('enabled', True):
+                self._push_web_log('framework', {'content': f'热重载: {bot.name} ({appid}) 已关闭'})
+            else:
+                self._push_web_log('framework', {'content': f'热重载: {bot.name} ({appid}) 已移除'})
 
-        # 新增
+        # 新增 (新配置 或 从关闭变为启用)
         for appid in target - current:
             inst = await self._start_one(valid[appid])
             if inst:
