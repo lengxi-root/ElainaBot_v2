@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-"""事件解析器 — 本文件已废弃，所有内容迁移至 core/message/parsers/ 目录。
-
-此文件仅作向后兼容用途，新代码请直接从 parsers 包导入。
-"""
+"""事件解析器 — 重新导出所有解析器类及工具函数"""
 
 from core.message.parsers.base import (
     MessageParser,
     MessageUtils,
     apply_message_scene,
-    extract_image_from_attachments,
     extract_msg_idx,
+    extract_image_from_attachments,
     parse_message_generic,
     sanitize_content,
 )
@@ -31,6 +28,7 @@ from core.message.parsers.lifecycle import (
 )
 
 __all__ = [
+    # base
     'MessageParser',
     'MessageUtils',
     'apply_message_scene',
@@ -38,11 +36,15 @@ __all__ = [
     'extract_image_from_attachments',
     'parse_message_generic',
     'sanitize_content',
+    # group
     'GroupMessageParser',
+    # direct / channel
     'DirectMessageParser',
     'ChannelMessageParser',
     'ChannelDirectMessageParser',
+    # interaction
     'InteractionParser',
+    # lifecycle
     'LifecycleParser',
     'GroupAddRobotParser',
     'GroupDelRobotParser',
@@ -52,5 +54,6 @@ __all__ = [
     'GroupMsgReceiveParser',
     'FriendAddParser',
     'FriendDelParser',
+    # identity
     'IdentityHelper',
 ]

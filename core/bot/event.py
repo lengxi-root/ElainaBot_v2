@@ -22,7 +22,7 @@ from core.message.event import (
     MESSAGE_TYPES,
     SILENT_TYPES,
 )
-from core.message.parsers import swap_ids
+from core.message.parsers import IdentityHelper
 
 log = get_logger(FRAMEWORK, '事件处理')
 
@@ -81,6 +81,7 @@ class EventHandlerMixin:
     # ==================== 事件入口 ====================
 
     async def _on_event(self, event):
+        _t0 = time.time()
         appid = event.appid
         bot = self._bots.get(appid)
         if not bot:
@@ -104,7 +105,7 @@ class EventHandlerMixin:
                 else cfg.get_bot_setting(appid, 'identity.use_union_id_for_group', False)
             )
             if need_swap:
-                event.user_id, event.union_openid, _ = swap_ids(event.raw_user_id, event.union_openid, True)
+                event.user_id, event.union_openid, _ = IdentityHelper.swap_ids(event.raw_user_id, event.union_openid, True)
 
         # 生命周期事件
         lc = self._LIFECYCLE_HANDLERS.get(et)
@@ -191,9 +192,8 @@ class EventHandlerMixin:
         if et == GROUP_MESSAGE_CREATE and event.is_at_all:
             return
 
-        # 屏蔽机器人消息
-        if getattr(event, 'is_bot', False) \
-                and cfg.get_bot_setting(appid, 'non_at_message.ignore_bot_sender', False):
+        # 屏蔽其他机器人发送的消息 (author.bot=true)
+        if getattr(event, 'is_bot', False) and cfg.get_bot_setting(appid, 'non_at_message.ignore_bot_sender', False):
             return
 
         # 插件分发
@@ -202,21 +202,20 @@ class EventHandlerMixin:
         try:
             await self._plugin_manager.dispatch(event, bot.sender)
         except Exception as e:
-            report_error(
-                FRAMEWORK,
-                '事件分发',
-                e,
-                context={'appid': appid, 'event_type': et, 'user_id': event.user_id},
-            )
-            self._push_web_log(
-                'error',
-                {
-                    'appid': appid,
-                    'source': '事件分发',
-                    'content': str(e),
-                    'event_type': et,
-                },
-            )
+            ctx = {'appid': appid, 'event_type': et, 'user_id': event.user_id}
+            report_error(FRAMEWORK, '事件分发', e, context=ctx)
+            web_log_err_item = {'appid': appid, 'source': '事件分发', 'content': str(e), 'event_type': et}
+            self._push_web_log('error', web_log_err_item)
+        _dt = time.time() - _t0
+        if _dt > 1:
+            msg = f'[性能] 事件处理耗时 {_dt * 1000:.0f}ms content={event.content[:50] if event.content else ""}'
+            log.warning(msg)
+            frm_log_item = {
+                'appid': appid,
+                'source': '性能',
+                'content': msg,
+            }
+            self._push_web_log('framework', frm_log_item)
 
     # ==================== 全量群记录 ====================
 
