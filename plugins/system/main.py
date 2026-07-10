@@ -1,4 +1,4 @@
-﻿"""系统管理与示例插件"""
+"""系统管理与示例插件"""
 
 import importlib
 import os
