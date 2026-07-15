@@ -115,11 +115,7 @@ async def handle_get_chats(request: web.Request):
                     bot = next(iter(_shared._bot_manager._bots.values()), None) if _shared._bot_manager else None
                     appid_default = next(iter(_shared._bot_manager._bots), '') if _shared._bot_manager and _shared._bot_manager._bots else ''
                     remarks = _load_remarks()
-                    if chat_type == 'remark':
-                        # 仅显示有备注的群
-                        source_ids = set(remarks.keys())
-                    else:
-                        source_ids = fa_ids
+                    source_ids = set(remarks.keys()) if chat_type == 'remark' else fa_ids
                     chats = [{
                         'chat_id': gid,
                         'appid': appid_filter or appid_default,
@@ -202,10 +198,7 @@ async def handle_get_chat_history(request: web.Request):
     # 查询群成员加入/退出事件
     lifecycle_rows = []
     if chat_type == 'group':
-        if before_date:
-            lc_dates = [before_date]
-        else:
-            lc_dates = _recent_dates(1)
+        lc_dates = [before_date] if before_date else _recent_dates(1)
         lifecycle_rows = await loop.run_in_executor(
             None, _query_lifecycle_events_sync, chat_type, chat_id, appid_filter, lc_dates
         )

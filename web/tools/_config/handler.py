@@ -13,6 +13,8 @@ import yaml
 from aiohttp import web
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from web.response import error, ok
+
 _base_dir = ''
 
 
@@ -211,7 +213,7 @@ async def handle_get_config(request: web.Request):
             result[name] = cfg._resolve_env_vars(raw_text)
         else:
             result[name] = ''
-    return web.json_response({'success': True, **result})
+    return ok(result)
 
 
 async def handle_save_config(request: web.Request):
@@ -220,9 +222,9 @@ async def handle_save_config(request: web.Request):
         file_name = body.get('file', '')
         content = body.get('content', '')
         if file_name not in ('bot', 'settings', 'templates'):
-            return web.json_response({'success': False, 'error': '无效的配置文件名'}, status=400)
+            return error('无效的配置文件名', status=400)
         if not content:
-            return web.json_response({'success': False, 'error': '内容不能为空'}, status=400)
+            return error('内容不能为空', status=400)
 
         cdir = _config_dir()
         path = os.path.join(cdir, f'{file_name}.yaml')
@@ -254,9 +256,9 @@ async def handle_save_config(request: web.Request):
             mtime = os.path.getmtime(path)
             cfg._do_reload('bot', path, mtime)
 
-        return web.json_response({'success': True, 'message': '配置已保存'})
+        return ok(message='配置已保存')
     except Exception as e:
-        return web.json_response({'success': False, 'error': str(e)}, status=500)
+        return error(str(e), status=500)
 
 
 # ===== 扫码快捷绑定机器人 =====
@@ -283,7 +285,8 @@ def _decrypt_bind_secret(encrypted_b64: str, key_b64: str) -> str:
     raw = base64.b64decode(encrypted_b64)
     key = base64.b64decode(key_b64)
     nonce, body = raw[:12], raw[12:]
-    return AESGCM(key).decrypt(nonce, body, None).decode('utf-8')
+    decrypted: bytes = AESGCM(key).decrypt(nonce, body, None)
+    return decrypted.decode('utf-8')
 
 
 async def _fetch_bot_profile(appid: str, secret: str) -> dict:
@@ -317,7 +320,7 @@ async def _fetch_bot_profile(appid: str, secret: str) -> dict:
 def _apply_bound_bot(appid: str, secret: str, robot_qq: str = '') -> bool:
     """将绑定结果写入 bot.yaml 并热重载, 返回是否为新增机器人"""
     path = os.path.join(_config_dir(), 'bot.yaml')
-    data = {}
+    data: dict[str, object] = {}
     if os.path.exists(path):
         with open(path, encoding='utf-8') as f:
             original = f.read()
@@ -369,11 +372,11 @@ async def handle_qr_bind_start(request: web.Request):
     resp = await api.create_bind_task(key)
     task_id = (resp.get('data') or {}).get('task_id') if resp.get('retcode') == 0 else None
     if not task_id:
-        return web.json_response({'success': False, 'message': resp.get('msg') or '创建绑定任务失败'})
+        return error(resp.get('msg') or '创建绑定任务失败')
     _prune_bind_tasks()
     task_id = str(task_id)
     _bind_tasks[task_id] = (time.time(), key)
-    return web.json_response({'success': True, 'task_id': task_id, 'url': _BIND_URL.format(task_id=quote(task_id))})
+    return ok({'task_id': task_id, 'url': _BIND_URL.format(task_id=quote(task_id))})
 
 
 async def handle_qr_bind_poll(request: web.Request):
@@ -382,11 +385,11 @@ async def handle_qr_bind_poll(request: web.Request):
     task_id = str(body.get('task_id') or '')
     entry = _bind_tasks.get(task_id)
     if not entry:
-        return web.json_response({'success': False, 'status': 'not_found', 'message': '绑定任务不存在或已过期'})
+        return error('绑定任务不存在或已过期', status=200, data={'status': 'not_found'})
     api = _get_bind_api()
     resp = await api.poll_bind_result(task_id)
     if resp.get('retcode') != 0:
-        return web.json_response({'success': False, 'status': 'error', 'message': resp.get('msg') or '查询绑定结果失败'})
+        return error(resp.get('msg') or '查询绑定结果失败', status=200, data={'status': 'error'})
     d = resp.get('data') or {}
     status = d.get('status')
     if status == 2:  # COMPLETED
@@ -394,20 +397,20 @@ async def handle_qr_bind_poll(request: web.Request):
         appid = str(d.get('bot_appid') or '')
         encrypted = d.get('bot_encrypt_secret') or ''
         if not appid or not encrypted:
-            return web.json_response({'success': False, 'status': 'error', 'message': '绑定结果缺少 AppID/Secret'})
+            return error('绑定结果缺少 AppID/Secret', status=200, data={'status': 'error'})
         try:
             secret = _decrypt_bind_secret(encrypted, entry[1])
         except Exception as e:
-            return web.json_response({'success': False, 'status': 'error', 'message': f'解密 Secret 失败: {e}'})
+            return error(f'解密 Secret 失败: {e}', status=200, data={'status': 'error'})
         robot_qq = ''
         with contextlib.suppress(Exception):
             robot_qq = (await _fetch_bot_profile(appid, secret)).get('robot_qq', '')
         try:
             created = _apply_bound_bot(appid, secret, robot_qq)
         except Exception as e:
-            return web.json_response({'success': False, 'status': 'error', 'message': f'写入配置失败: {e}'})
-        return web.json_response({'success': True, 'status': 'completed', 'appid': appid, 'created': created})
+            return error(f'写入配置失败: {e}', status=200, data={'status': 'error'})
+        return ok({'status': 'completed', 'appid': appid, 'created': created})
     if status == 3:  # EXPIRED
         _bind_tasks.pop(task_id, None)
-        return web.json_response({'success': True, 'status': 'expired'})
-    return web.json_response({'success': True, 'status': 'waiting'})
+        return ok({'status': 'expired'})
+    return ok({'status': 'waiting'})
