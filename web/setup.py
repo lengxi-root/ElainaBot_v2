@@ -192,6 +192,35 @@ def _select_dist_dir(project_dir: str, web_dir: str) -> str:
     return existing[0] if existing else candidates[0]
 
 
+_ASSET_REF_RE = re.compile(r'((?:src|href)=")(/web/assets/[^"?]+)(")')
+
+
+def _dist_version(dist_root: str) -> int:
+    """以产物文件最新修改时间作为版本号"""
+    latest = 0
+    assets = os.path.join(dist_root, 'assets')
+    for d in (dist_root, assets):
+        if not os.path.isdir(d):
+            continue
+        for name in os.listdir(d):
+            p = os.path.join(d, name)
+            if os.path.isfile(p):
+                latest = max(latest, int(os.path.getmtime(p)))
+    return latest
+
+
+def _serve_index(dist_root: str, index_path: str):
+    """返回 index.html, 给资源引用附加 ?v=版本号 使更新后自动拉取新文件"""
+    try:
+        with open(index_path, encoding='utf-8') as f:
+            html = f.read()
+        ver = _dist_version(dist_root)
+        html = _ASSET_REF_RE.sub(lambda m: f'{m.group(1)}{m.group(2)}?v={ver}{m.group(3)}', html)
+        return web.Response(text=html, content_type='text/html', headers={'Cache-Control': 'no-store'})
+    except OSError:
+        return web.FileResponse(index_path, headers={'Content-Type': 'text/html', 'Cache-Control': 'no-store'})
+
+
 def _make_spa_handler(dist_dir: str):
     dist_root = os.path.realpath(dist_dir)
 
@@ -213,10 +242,10 @@ def _make_spa_handler(dist_dir: str):
             if ct:
                 headers['Content-Type'] = ct
             if ext == '.html':
-                headers['Cache-Control'] = 'no-cache'
-            elif '/assets/' in path or path.startswith('assets/'):
+                return _serve_index(dist_root, file_path)
+            if '/assets/' in path or path.startswith('assets/'):
                 # 产物文件名不带 hash, 更新后强缓存会导致新旧分块混用报错; 用协商缓存 (304)
-                headers['Cache-Control'] = 'no-cache'
+                headers['Cache-Control'] = 'no-cache, must-revalidate'
             return web.FileResponse(file_path, headers=headers)
 
         if path.startswith('assets/'):
@@ -231,7 +260,7 @@ def _spa_index_or_404(dist_root: str):
     """SPA 回退: 返回 index.html, 不存在则 404"""
     index = os.path.join(dist_root, 'index.html')
     if os.path.isfile(index):
-        return web.FileResponse(index, headers={'Content-Type': 'text/html', 'Cache-Control': 'no-cache'})
+        return _serve_index(dist_root, index)
     return web.Response(text='Not Found', status=404)
 
 

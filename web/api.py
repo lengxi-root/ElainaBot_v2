@@ -21,6 +21,7 @@ import web.tools._plugin_mgr.files as _plugin_mgr_files
 import web.tools._plugin_mgr.module as _plugin_mgr_module
 import web.tools._plugin_mgr.scan as _plugin_mgr_scan
 import web.tools._plugin_mgr.shared as _plugin_mgr_shared
+import web.tools._stats.dependencies as deps_info
 import web.tools._stats.log as log_query
 import web.tools._stats.statistics as statistics_handler
 import web.tools._stats.system as system_info
@@ -53,6 +54,7 @@ def get_routes() -> list:
         web.get('/api/robot/qrcode', robot_info.handle_get_robot_qrcode),
         # ── 系统信息 ──
         web.get('/api/system/info', _(system_info.handle_system_info)),
+        web.get('/api/system/dependencies', _(deps_info.handle_dependencies)),
         # ── 日志 (具体路径必须在 {log_type} 之前) ──
         web.get('/api/logs/recent', _(handle_recent_logs)),
         web.get('/api/logs/login', _(log_query.handle_get_login_logs)),
@@ -221,6 +223,7 @@ def set_context(bot_manager, base_dir: str):
     update_handler.set_context(base_dir)
     bot_restart.set_context(base_dir)
     system_info.set_context(bot_manager)
+    deps_info.set_context(base_dir)
     openapi_handler.set_context(base_dir, bot_manager)
     _market_shared.set_context(base_dir)
     database_browser.set_context(bot_manager, base_dir)
