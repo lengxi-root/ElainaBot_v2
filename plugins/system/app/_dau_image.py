@@ -1,9 +1,9 @@
-"""DAU 统计图片渲染 — QQ 开放平台风格 (PIL)"""
+"""DAU 统计图片渲染 (PIL)"""
 
 import os
 from io import BytesIO
 
-# ==================== 配色 (QQ开放平台 / TDesign) ====================
+# ==================== 配色 ====================
 _BG_TOP = (11, 92, 255)       # 头图渐变起
 _BG_BOTTOM = (77, 141, 255)   # 头图渐变止
 _PAGE_BG = (243, 245, 249)
@@ -134,7 +134,7 @@ def _delta_pill(d, x, y, diff, h=40):
 
 
 def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
-    """渲染 DAU 统计卡片 (QQ开放平台风格), 返回 PNG bytes; PIL 不可用时返回 None"""
+    """渲染 DAU 统计卡片, 返回 PNG bytes; PIL 不可用时返回 None"""
     try:
         from PIL import Image, ImageDraw
     except ImportError:
