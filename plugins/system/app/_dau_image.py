@@ -197,7 +197,9 @@ def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
     metric_h = 190
     small_h = 150
     rank_h = 104 + list_rows * 84
-    height = header_h + 110 + (metric_h + gap) * 2 + small_h + gap + rank_h + 120
+    # 内容底部 = 卡片起点(header_h-60) + 指标区 + 小卡区 + 排行区 + 页脚
+    height = (header_h - 60) + (metric_h * 2 + gap * 2 + 22) \
+        + (small_h + gap + 14) + (rank_h + 40) + 70
 
     img = Image.new('RGB', (width, height), _PAGE_BG)
     d = ImageDraw.Draw(img)
@@ -234,20 +236,34 @@ def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
         return y_stats.get(key) if y_stats else None
 
     metrics = [
-        ('活跃用户数', stats.get('users', 0), _y('users'), '👤'),
-        ('活跃群聊数', stats.get('groups_', 0), _y('groups_'), '👥'),
-        ('上行消息数', stats.get('received', 0), _y('received'), '📥'),
-        ('下行消息数', stats.get('sent', 0), _y('sent'), '📤'),
+        ('活跃用户数', stats.get('users', 0), _y('users')),
+        ('活跃群聊数', stats.get('groups_', 0), _y('groups_')),
+        ('上行消息数', stats.get('received', 0), _y('received')),
+        ('下行消息数', stats.get('sent', 0), _y('sent')),
     ]
     card_w = (width - pad * 2 - gap) // 2
-    for i, (label, val, y_val, _icon) in enumerate(metrics):
+    for i, (label, val, y_val) in enumerate(metrics):
         cx = pad + (i % 2) * (card_w + gap)
         cy = y + (i // 2) * (metric_h + gap)
         _card(img, d, (cx, cy, cx + card_w, cy + metric_h))
         accent_fg, accent_bg = _ACCENTS[i]
         # 图标块
-        d.rounded_rectangle((cx + 32, cy + 32, cx + 88, cy + 88), radius=16, fill=accent_bg)
-        d.rounded_rectangle((cx + 52, cy + 52, cx + 68, cy + 68), radius=5, fill=accent_fg)
+        ix, iy = cx + 32, cy + 32
+        d.rounded_rectangle((ix, iy, ix + 56, iy + 56), radius=16, fill=accent_bg)
+        if i == 0:  # 单人: 头+肩
+            d.ellipse((ix + 20, iy + 11, ix + 36, iy + 27), fill=accent_fg)
+            d.pieslice((ix + 12, iy + 29, ix + 44, iy + 59), 180, 360, fill=accent_fg)
+        elif i == 1:  # 双人: 两组头+肩
+            d.ellipse((ix + 12, iy + 14, ix + 25, iy + 27), fill=accent_fg)
+            d.pieslice((ix + 6, iy + 29, ix + 31, iy + 53), 180, 360, fill=accent_fg)
+            d.ellipse((ix + 32, iy + 14, ix + 45, iy + 27), fill=accent_fg)
+            d.pieslice((ix + 26, iy + 29, ix + 51, iy + 53), 180, 360, fill=accent_fg)
+        elif i == 2:  # 上行: 向上箭头
+            d.polygon([(ix + 28, iy + 11), (ix + 42, iy + 27), (ix + 14, iy + 27)], fill=accent_fg)
+            d.rounded_rectangle((ix + 23, iy + 26, ix + 33, iy + 45), radius=3, fill=accent_fg)
+        else:  # 下行: 向下箭头
+            d.rounded_rectangle((ix + 23, iy + 11, ix + 33, iy + 30), radius=3, fill=accent_fg)
+            d.polygon([(ix + 28, iy + 45), (ix + 42, iy + 29), (ix + 14, iy + 29)], fill=accent_fg)
         d.text((cx + 108, cy + 34), label, font=_font(26), fill=_TEXT_SECONDARY)
         num_font = _font(56, bold=True)
         d.text((cx + 108, cy + 72), _fmt_num(val), font=num_font, fill=_TEXT)
