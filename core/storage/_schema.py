@@ -64,6 +64,7 @@ _SCHEMAS = {
             raw_message TEXT DEFAULT '',
             plugin_name TEXT DEFAULT '',
             direction TEXT DEFAULT '',
+            at_bot INTEGER DEFAULT 1,
             context TEXT DEFAULT ''
         )
     """,
@@ -143,7 +144,7 @@ _SCHEMAS = {
 
 # INSERT SQL
 _INSERTS = {
-    'message': 'INSERT INTO log (timestamp, message_id, reference_id, user_id, group_id, content, raw_message, plugin_name, direction, context) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    'message': 'INSERT INTO log (timestamp, message_id, reference_id, user_id, group_id, content, raw_message, plugin_name, direction, at_bot, context) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     'framework': 'INSERT INTO log (timestamp, content, level) VALUES (?,?,?)',
     'error': 'INSERT INTO log (timestamp, appid, module_type, module_name, content, traceback, context) VALUES (?,?,?,?,?,?,?)',
     'lifecycle': 'INSERT INTO log (timestamp, type, user_id, group_id, extra) VALUES (?,?,?,?,?)',

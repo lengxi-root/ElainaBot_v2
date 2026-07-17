@@ -318,7 +318,7 @@ def _gather_chart_sync(days, appid_filter):
                         'message',
                         'SELECT COUNT(*) as cnt, '
                         "COUNT(CASE WHEN group_id = '' OR group_id = 'c2c' THEN 1 END) as priv, "
-                        "COUNT(DISTINCT CASE WHEN user_id != '' THEN user_id END) as users, "
+                        "COUNT(DISTINCT CASE WHEN user_id != '' AND direction != 'send' AND COALESCE(at_bot, 1) != 0 THEN user_id END) as users, "
                         "COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c' THEN group_id END) as groups_ "
                         "FROM log WHERE user_id != ''",
                         date=date_str,
@@ -504,7 +504,7 @@ def _gather_active(date, appid_filter):
                 rows = inst.log_service.query(
                     'message',
                     'SELECT '
-                    "COUNT(DISTINCT CASE WHEN user_id!='' THEN user_id END) as users, "
+                    "COUNT(DISTINCT CASE WHEN user_id!='' AND direction!='send' AND COALESCE(at_bot,1)!=0 THEN user_id END) as users, "
                     "COUNT(DISTINCT CASE WHEN group_id!='' AND group_id!='c2c' THEN group_id END) as groups_ "
                     'FROM log',
                     date=date,
@@ -600,7 +600,7 @@ def _gather_summary_active(date, appid_filter):
                     "COUNT(CASE WHEN group_id='c2c' OR group_id='' THEN 1 END) as private, "
                     "COUNT(CASE WHEN direction='receive' THEN 1 END) as received, "
                     "COUNT(CASE WHEN direction='send' THEN 1 END) as sent, "
-                    "COUNT(DISTINCT CASE WHEN user_id!='' THEN user_id END) as users, "
+                    "COUNT(DISTINCT CASE WHEN user_id!='' AND direction!='send' AND COALESCE(at_bot,1)!=0 THEN user_id END) as users, "
                     "COUNT(DISTINCT CASE WHEN group_id!='' AND group_id!='c2c' THEN group_id END) as groups_ "
                     'FROM log',
                     date=date,

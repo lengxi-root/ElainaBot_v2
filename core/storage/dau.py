@@ -128,9 +128,13 @@ class DAUService(DailyScanService):
             return None
         try:
             cur = conn.cursor()
-            cur.execute("""
+            # 旧库可能没有 at_bot 列, 按已艾特处理
+            has_at_bot = any(r['name'] == 'at_bot' for r in cur.execute('PRAGMA table_info(log)'))
+            at_ok = 'COALESCE(at_bot, 1) != 0' if has_at_bot else '1=1'
+            cur.execute(f"""
                 SELECT COUNT(*) AS total,
-                       COUNT(DISTINCT CASE WHEN user_id != '' THEN user_id END) AS users,
+                       COUNT(DISTINCT CASE WHEN user_id != '' AND direction != 'send' AND {at_ok}
+                                           THEN user_id END) AS users,
                        COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c'
                                            THEN group_id END) AS groups_,
                        COUNT(CASE WHEN group_id = 'c2c' OR group_id = '' THEN 1 END) AS private,
