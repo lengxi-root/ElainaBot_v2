@@ -50,23 +50,33 @@ def _query_today_stats_sync(bot):
     if not total:
         return None
 
-    users = q('message', "SELECT COUNT(DISTINCT user_id) AS c FROM log WHERE user_id != ''", date=today)
+    # 活跃统计仅计接收消息, 全量群仅计艾特机器人的
+    recv = "direction != 'send' AND COALESCE(at_bot, 1) != 0"
+    users = q('message', f"SELECT COUNT(DISTINCT user_id) AS c FROM log WHERE user_id != '' AND {recv}", date=today)
     groups = q(
         'message',
-        "SELECT COUNT(DISTINCT group_id) AS c FROM log WHERE group_id != '' AND group_id != 'c2c'",
+        f"SELECT COUNT(DISTINCT group_id) AS c FROM log WHERE group_id != '' AND group_id != 'c2c' AND {recv}",
         date=today,
     )
     private = q('message', "SELECT COUNT(*) AS c FROM log WHERE group_id = 'c2c' OR group_id = ''", date=today)
+    updown = q(
+        'message',
+        "SELECT COUNT(CASE WHEN direction = 'receive' THEN 1 END) AS received, "
+        "COUNT(CASE WHEN direction = 'send' THEN 1 END) AS sent FROM log",
+        date=today,
+    )
     stats = {
         'total': total,
         'users': users[0]['c'] if users else 0,
         'groups_': groups[0]['c'] if groups else 0,
         'private': private[0]['c'] if private else 0,
+        'received': updown[0]['received'] if updown else 0,
+        'sent': updown[0]['sent'] if updown else 0,
     }
 
     peak = q(
         'message',
-        'SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c FROM log GROUP BY hr ORDER BY c DESC LIMIT 1',
+        f'SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c FROM log WHERE {recv} GROUP BY hr ORDER BY c DESC LIMIT 1',
         date=today,
     )
     stats['peak_hour'] = int(peak[0]['hr']) if peak and peak[0].get('hr') else 0
@@ -74,16 +84,16 @@ def _query_today_stats_sync(bot):
 
     stats['top_groups'] = q(
         'message',
-        """
+        f"""
         SELECT group_id, COUNT(*) AS c FROM log
-        WHERE group_id != '' AND group_id != 'c2c'
+        WHERE group_id != '' AND group_id != 'c2c' AND {recv}
         GROUP BY group_id ORDER BY c DESC LIMIT 3
     """,
         date=today,
     )
     stats['top_users'] = q(
         'message',
-        "SELECT user_id, COUNT(*) AS c FROM log WHERE user_id != '' GROUP BY user_id ORDER BY c DESC LIMIT 3",
+        f"SELECT user_id, COUNT(*) AS c FROM log WHERE user_id != '' AND {recv} GROUP BY user_id ORDER BY c DESC LIMIT 3",
         date=today,
     )
     return stats
@@ -99,7 +109,8 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
 
     y_users = y_stats['users'] if y_stats else None
     y_groups = y_stats['groups_'] if y_stats else None
-    y_total = y_stats['total'] if y_stats else None
+    y_received = y_stats.get('received') if y_stats else None
+    y_sent = y_stats.get('sent') if y_stats else None
     y_private = y_stats['private'] if y_stats else None
 
     info.append(
@@ -120,10 +131,18 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
     )
     info.append(
         _fmt_diff(
-            '消息总数',
-            stats.get('total', stats.get('total_messages', 0)),
-            y_total,
+            '上行消息数',
+            stats.get('received', stats.get('received_messages', 0)),
+            y_received,
             '💬',
+        )
+    )
+    info.append(
+        _fmt_diff(
+            '下行消息数',
+            stats.get('sent', stats.get('sent_messages', 0)),
+            y_sent,
+            '📤',
         )
     )
     info.append(
@@ -266,15 +285,16 @@ def _query_yesterday_same_period_sync(bot):
     if not total:
         return None
 
+    recv = "direction != 'send' AND COALESCE(at_bot, 1) != 0"
     users = q(
         'message',
-        "SELECT COUNT(DISTINCT user_id) AS c FROM log WHERE user_id != '' AND timestamp <= ?",
+        f"SELECT COUNT(DISTINCT user_id) AS c FROM log WHERE user_id != '' AND {recv} AND timestamp <= ?",
         (bound,),
         date=yesterday,
     )
     groups = q(
         'message',
-        "SELECT COUNT(DISTINCT group_id) AS c FROM log WHERE group_id != '' AND group_id != 'c2c' AND timestamp <= ?",
+        f"SELECT COUNT(DISTINCT group_id) AS c FROM log WHERE group_id != '' AND group_id != 'c2c' AND {recv} AND timestamp <= ?",
         (bound,),
         date=yesterday,
     )
@@ -284,11 +304,20 @@ def _query_yesterday_same_period_sync(bot):
         (bound,),
         date=yesterday,
     )
+    updown = q(
+        'message',
+        "SELECT COUNT(CASE WHEN direction = 'receive' THEN 1 END) AS received, "
+        "COUNT(CASE WHEN direction = 'send' THEN 1 END) AS sent FROM log WHERE timestamp <= ?",
+        (bound,),
+        date=yesterday,
+    )
     return {
         'total': total,
         'users': users[0]['c'] if users else 0,
         'groups_': groups[0]['c'] if groups else 0,
         'private': private[0]['c'] if private else 0,
+        'received': updown[0]['received'] if updown else 0,
+        'sent': updown[0]['sent'] if updown else 0,
     }
 
 
@@ -330,6 +359,8 @@ async def _handle_history_dau(event, bot, date_str):
         'users': data.get('active_users', 0),
         'groups_': data.get('active_groups', 0),
         'total': data.get('total_messages', 0),
+        'received': data.get('received_messages', 0) or 0,
+        'sent': data.get('sent_messages', 0) or 0,
         'private': data.get('private_messages', 0),
         'peak_hour': detail.get('peak_hour', 0),
         'peak_hour_count': detail.get('peak_hour_count', 0),

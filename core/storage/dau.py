@@ -136,6 +136,7 @@ class DAUService(DailyScanService):
                        COUNT(DISTINCT CASE WHEN user_id != '' AND direction != 'send' AND {at_ok}
                                            THEN user_id END) AS users,
                        COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c'
+                                           AND direction != 'send' AND {at_ok}
                                            THEN group_id END) AS groups_,
                        COUNT(CASE WHEN group_id = 'c2c' OR group_id = '' THEN 1 END) AS private,
                        COUNT(CASE WHEN direction = 'receive' THEN 1 END) AS received,
