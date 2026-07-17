@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from core.plugin.decorators import handler
 
+from ._dau_image import render_dau_image
 from ._reply import reply
 
 
@@ -16,6 +17,63 @@ def _get_bot(event):
 
     app = get_app()
     return app.get_bot(event.appid) if app else None
+
+
+def _get_hosting():
+    """获取图床模块实例 (未启用返回 None)"""
+    from core.application import get_app
+
+    app = get_app()
+    mm = app.module_manager if app else None
+    return mm.get('image_hosting') if mm else None
+
+
+async def _upload_dau_image(bot, image_bytes):
+    """依次尝试已开启的图床上传, 失败自动换下一个; 全部失败返回 None"""
+    hosting = _get_hosting()
+    if not hosting:
+        return None
+    status = hosting.status()
+    uploaders = (
+        ('cos', lambda: hosting.upload_cos_url(image_bytes, 'dau_stats.png')),
+        ('bilibili', lambda: hosting.upload_bilibili(image_bytes)),
+        ('qq_channel', lambda: hosting.upload_qq(image_bytes, bot.token_manager)),
+        ('chatglm', lambda: hosting.upload_chatglm(image_bytes)),
+        ('ukaka', lambda: hosting.upload_ukaka(image_bytes)),
+        ('xingye', lambda: hosting.upload_xingye(image_bytes)),
+        ('nature', lambda: hosting.upload_nature(image_bytes)),
+    )
+    for name, fn in uploaders:
+        if not status.get(name):
+            continue
+        try:
+            result = await fn()
+        except Exception:
+            continue
+        if isinstance(result, str) and result.startswith('http'):
+            return result
+    return None
+
+
+async def _reply_dau(event, bot, stats, date, elapsed_ms, y_stats=None, is_today=False):
+    """优先图床发图, 无可用图床或上传失败时回退文本"""
+    now = datetime.now()
+    time_suffix = f' (截至{now.hour:02d}:{now.minute:02d})' if is_today else ''
+    try:
+        image = render_dau_image(
+            stats,
+            f'{date.strftime("%m-%d")} 活跃统计',
+            sub_title=f'{bot.name}{time_suffix}',
+            y_stats=y_stats,
+        )
+    except Exception:
+        image = None
+    if image:
+        url = await _upload_dau_image(bot, image)
+        if url:
+            return await event.reply_image(url, f'<@{event.user_id}>')
+    msg = _build_dau_message(event, stats, date, elapsed_ms, y_stats=y_stats, is_today=is_today)
+    await reply(event, msg)
 
 
 def _mask_id(s, n=3):
@@ -269,8 +327,7 @@ async def _handle_today_dau(event, bot):
         return await reply(event, f'<@{event.user_id}>\n❌ 今日暂无消息数据')
 
     elapsed = round((time.time() - t0) * 1000)
-    msg = _build_dau_message(event, stats, datetime.now(), elapsed, y_stats=y_stats, is_today=True)
-    await reply(event, msg)
+    await _reply_dau(event, bot, stats, datetime.now(), elapsed, y_stats=y_stats, is_today=True)
 
 
 def _query_yesterday_same_period_sync(bot):
@@ -369,5 +426,4 @@ async def _handle_history_dau(event, bot, date_str):
     }
 
     elapsed = round((time.time() - t0) * 1000)
-    msg = _build_dau_message(event, stats, target, elapsed)
-    await reply(event, msg)
+    await _reply_dau(event, bot, stats, target, elapsed)
