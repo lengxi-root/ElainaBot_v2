@@ -177,9 +177,9 @@ class DAUService(DailyScanService):
             """)
             stats['top_users'] = [{'user_id': r['user_id'], 'message_count': r['c']} for r in cur.fetchall()]
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT plugin_name, COUNT(*) AS c FROM log
-                WHERE plugin_name != ''
+                WHERE plugin_name != '' AND direction != 'send' AND {at_ok}
                 GROUP BY plugin_name ORDER BY c DESC LIMIT 10
             """)
             stats['top_commands'] = [{'command': r['plugin_name'], 'count': r['c']} for r in cur.fetchall()]
