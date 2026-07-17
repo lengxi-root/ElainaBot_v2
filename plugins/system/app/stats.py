@@ -100,8 +100,8 @@ def _fmt_diff(label, val, y_val, emoji):
     if y_val is not None:
         diff = val - y_val
         arrow = f'🔺{diff}' if diff > 0 else f'🔻{abs(diff)}' if diff < 0 else '➖0'
-        return f'{emoji} {label}: {val} ({arrow})'
-    return f'{emoji} {label}: {val}'
+        return f'{emoji} {label}: **{val}** ({arrow})'
+    return f'{emoji} {label}: **{val}**'
 
 
 # 活跃统计仅计接收消息, 全量群仅计艾特机器人的
@@ -171,7 +171,7 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
     time_suffix = f' (截至{datetime.now().hour:02d}:{datetime.now().minute:02d})' if is_today else ''
     info = [
         f'<@{event.user_id}>',
-        f'📊 {date.strftime("%m-%d")} 活跃统计{time_suffix}',
+        f'## 📊 {date.strftime("%m-%d")} 活跃统计{time_suffix}',
     ]
 
     y_users = y_stats['users'] if y_stats else None
@@ -222,13 +222,13 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
     )
 
     if 'group_join' in stats:
-        info.append(f"➕ 今日加群: {stats.get('group_join', 0)}")
-        info.append(f"➖ 今日退群: {stats.get('group_leave', 0)}")
+        info.append(f"➕ 今日加群: **{stats.get('group_join', 0)}**")
+        info.append(f"➖ 今日退群: **{stats.get('group_leave', 0)}**")
 
     peak_hour = stats.get('peak_hour', 0)
     peak_count = stats.get('peak_hour_count', 0)
     if peak_hour or peak_count:
-        info.append(f'⏰ 最活跃时段: {peak_hour}点 ({peak_count}条)')
+        info.append(f'⏰ 最活跃时段: **{peak_hour}点** ({peak_count}条)')
 
     # Top 群
     top_groups = stats.get('top_groups', [])
@@ -237,7 +237,7 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
         for i, g in enumerate(top_groups[:2], 1):
             gid = g.get('group_id', '')
             cnt = g.get('c', g.get('message_count', 0))
-            info.append(f'  {i}. {_mask_id(gid)} ({cnt}条)')
+            info.append(f'{i}. {_mask_id(gid)} (**{cnt}**条)')
 
     # Top 用户
     top_users = stats.get('top_users', [])
@@ -246,7 +246,7 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
         for i, u in enumerate(top_users[:2], 1):
             uid = u.get('user_id', '')
             cnt = u.get('c', u.get('message_count', 0))
-            info.append(f'  {i}. {_mask_id(uid)} ({cnt}条)')
+            info.append(f'{i}. {_mask_id(uid)} (**{cnt}**条)')
 
     info.append(f'🕒 查询耗时: {elapsed_ms}ms')
     return '\n'.join(info)
