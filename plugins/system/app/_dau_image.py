@@ -32,9 +32,11 @@ _RANK_COLORS = ((255, 172, 20), (160, 174, 192), (219, 154, 108))  # 金银铜
 _CUSTOM_FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
 
 _FONT_PATHS = [
+    '/usr/share/fonts/truetype/msyh.ttc',
     'C:/Windows/Fonts/msyh.ttc',
     'C:/Windows/Fonts/msyh.ttf',
     'C:/Windows/Fonts/simhei.ttf',
+    '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
     '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
     '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
     '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
@@ -43,6 +45,7 @@ _FONT_PATHS = [
     '/System/Library/Fonts/PingFang.ttc',
 ]
 _FONT_BOLD_PATHS = [
+    '/usr/share/fonts/truetype/msyhbd.ttc',
     'C:/Windows/Fonts/msyhbd.ttc',
     'C:/Windows/Fonts/msyhbd.ttf',
     '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc',
@@ -103,10 +106,18 @@ def _find_font():
     return _font_file
 
 
+_font_cache = {}
+
+
 def _font(size, bold=False):
     from PIL import ImageFont
 
-    return ImageFont.truetype(_font_bold_file if bold else _font_file, size)
+    key = (size, bold)
+    f = _font_cache.get(key)
+    if f is None:
+        f = ImageFont.truetype(_font_bold_file if bold else _font_file, size)
+        _font_cache[key] = f
+    return f
 
 
 def _fmt_num(n):
