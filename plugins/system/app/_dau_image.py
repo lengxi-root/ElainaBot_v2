@@ -133,7 +133,7 @@ def _delta_pill(d, x, y, diff, h=40):
     return w
 
 
-def render_dau_image(stats, title, sub_title='', y_stats=None):
+def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
     """渲染 DAU 统计卡片 (QQ开放平台风格), 返回 PNG bytes; PIL 不可用时返回 None"""
     try:
         from PIL import Image, ImageDraw
@@ -151,7 +151,7 @@ def render_dau_image(stats, title, sub_title='', y_stats=None):
 
     header_h = 300
     metric_h = 190
-    small_h = 140
+    small_h = 150
     rank_h = 104 + list_rows * 84
     height = header_h + 110 + (metric_h + gap) * 2 + small_h + gap + rank_h + 120
 
@@ -217,21 +217,30 @@ def render_dau_image(stats, title, sub_title='', y_stats=None):
     # ===== 私聊消息 / 最活跃时段 =====
     row = [
         ('私聊消息', _fmt_num(stats.get('private', 0)),
-         _y('private'), stats.get('private', 0), None),
+         _y('private'), stats.get('private', 0), None, ((0, 153, 214), (227, 244, 253))),
         ('最活跃时段', f"{stats.get('peak_hour', 0)}:00",
-         None, None, f"{_fmt_num(stats.get('peak_hour_count', 0))}条"),
+         None, None, f"{_fmt_num(stats.get('peak_hour_count', 0))}条", ((233, 84, 152), (253, 233, 242))),
     ]
-    for i, (label, val, y_val, raw, extra) in enumerate(row):
+    for i, (label, val, y_val, raw, extra, (icon_fg, icon_bg)) in enumerate(row):
         cx = pad + i * (card_w + gap)
         _card(img, d, (cx, y, cx + card_w, y + small_h))
-        d.text((cx + 32, y + 24), label, font=_font(24), fill=_TEXT_SECONDARY)
+        # 图标块
+        icx, icy = cx + 32, y + (small_h - 56) // 2
+        d.rounded_rectangle((icx, icy, icx + 56, icy + 56), radius=16, fill=icon_bg)
+        if i == 0:  # 聊天气泡
+            d.rounded_rectangle((icx + 14, icy + 16, icx + 42, icy + 36), radius=8, fill=icon_fg)
+            d.polygon([(icx + 20, icy + 34), (icx + 28, icy + 34), (icx + 18, icy + 42)], fill=icon_fg)
+        else:  # 时钟
+            d.ellipse((icx + 13, icy + 13, icx + 43, icy + 43), outline=icon_fg, width=4)
+            d.line([(icx + 28, icy + 21), (icx + 28, icy + 29), (icx + 35, icy + 32)], fill=icon_fg, width=4)
+        d.text((cx + 108, y + 26), label, font=_font(24), fill=_TEXT_SECONDARY)
         vf = _font(44, bold=True)
-        d.text((cx + 32, y + 62), val, font=vf, fill=_TEXT)
+        d.text((cx + 108, y + 62), val, font=vf, fill=_TEXT)
         vw = _text_w(d, val, vf)
         if y_val is not None and raw is not None:
-            _delta_pill(d, cx + 32 + vw + 20, y + 74, int(raw) - int(y_val))
+            _delta_pill(d, cx + 108 + vw + 20, y + 74, int(raw) - int(y_val))
         elif extra:
-            d.text((cx + 32 + vw + 20, y + 82), extra, font=_font(24), fill=_TEXT_TERTIARY)
+            d.text((cx + 108 + vw + 20, y + 82), extra, font=_font(24), fill=_TEXT_TERTIARY)
 
     y += small_h + gap + 14
 
@@ -278,6 +287,8 @@ def render_dau_image(stats, title, sub_title='', y_stats=None):
 
     # ===== 底部 =====
     footer = 'ElainaBot · 数据统计'
+    if elapsed_ms is not None:
+        footer += f' · 查询耗时 {_fmt_num(elapsed_ms)}ms'
     ff = _font(22)
     d.text(((width - _text_w(d, footer, ff)) // 2, y), footer, font=ff, fill=_TEXT_TERTIARY)
 

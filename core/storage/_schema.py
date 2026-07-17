@@ -182,6 +182,10 @@ _INDEXES = {
 
         'CREATE INDEX IF NOT EXISTS idx_msg_direction ON log(direction, user_id, group_id, content)',
         'CREATE INDEX IF NOT EXISTS idx_msg_plugin_name ON log(plugin_name)',
+        # 统计覆盖索引: 计数/峰值/排行只扫索引, 避免读取 raw_message 大字段
+        'CREATE INDEX IF NOT EXISTS idx_msg_stats_cover ON log(direction, at_bot, group_id, user_id, timestamp)',
+        'CREATE INDEX IF NOT EXISTS idx_msg_stats_user ON log(user_id, direction, at_bot)',
+        'CREATE INDEX IF NOT EXISTS idx_msg_stats_group ON log(group_id, direction, at_bot)',
     ],
     'lifecycle': [
         'CREATE INDEX IF NOT EXISTS idx_lc_user_id ON log(user_id)',
