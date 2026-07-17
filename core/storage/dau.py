@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from core.base.logger import FRAMEWORK, get_logger
 from core.storage._daily_base import DailyScanService
 from core.storage._schema import DAU_TABLE_SQL
+from core.storage.lifecycle_stats import compute_lifecycle_counts
 
 log = get_logger(FRAMEWORK, 'DAU统计')
 
@@ -132,7 +133,9 @@ class DAUService(DailyScanService):
                        COUNT(DISTINCT CASE WHEN user_id != '' THEN user_id END) AS users,
                        COUNT(DISTINCT CASE WHEN group_id != '' AND group_id != 'c2c'
                                            THEN group_id END) AS groups_,
-                       COUNT(CASE WHEN group_id = 'c2c' OR group_id = '' THEN 1 END) AS private
+                       COUNT(CASE WHEN group_id = 'c2c' OR group_id = '' THEN 1 END) AS private,
+                       COUNT(CASE WHEN direction = 'receive' THEN 1 END) AS received,
+                       COUNT(CASE WHEN direction = 'send' THEN 1 END) AS sent
                 FROM log
             """)
             row = cur.fetchone()
@@ -144,6 +147,8 @@ class DAUService(DailyScanService):
                 'active_users': row['users'],
                 'active_groups': row['groups_'],
                 'private_messages': row['private'],
+                'received_messages': row['received'],
+                'sent_messages': row['sent'],
             }
 
             cur.execute("""
@@ -193,14 +198,10 @@ class DAUService(DailyScanService):
         if not conn:
             return dict(self._EMPTY_LIFECYCLE)
         try:
-            cur = conn.execute('SELECT type, COUNT(*) AS c FROM log GROUP BY type')
-            counts = {row['type']: row['c'] for row in cur.fetchall()}
-            return {
-                'group_join_count': counts.get('group_add', 0),
-                'group_leave_count': counts.get('group_del', 0),
-                'friend_add_count': counts.get('friend_add', 0),
-                'friend_remove_count': counts.get('friend_del', 0),
-            }
+            cur = conn.execute('SELECT type, user_id, group_id FROM log ORDER BY id')
+            return compute_lifecycle_counts(
+                (row['type'], row['user_id'], row['group_id']) for row in cur
+            )
         except Exception as e:
             log.debug(f'[{appid}] 读取 lifecycle 统计失败: {e}')
             return dict(self._EMPTY_LIFECYCLE)
@@ -213,18 +214,24 @@ class DAUService(DailyScanService):
         conn = sqlite3.connect(dau_path, timeout=10)
         try:
             conn.execute(DAU_TABLE_SQL)
+            for col in ('received_messages', 'sent_messages'):
+                with contextlib.suppress(sqlite3.OperationalError):
+                    conn.execute(f'ALTER TABLE log ADD COLUMN {col} INTEGER DEFAULT 0')
             conn.execute(
                 """
                 INSERT INTO log (date, active_users, active_groups, total_messages,
-                                 private_messages, group_join_count, group_leave_count,
+                                 private_messages, received_messages, sent_messages,
+                                 group_join_count, group_leave_count,
                                  friend_add_count, friend_remove_count,
                                  message_stats_detail, user_stats_detail, command_stats_detail)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(date) DO UPDATE SET
                     active_users=excluded.active_users,
                     active_groups=excluded.active_groups,
                     total_messages=excluded.total_messages,
                     private_messages=excluded.private_messages,
+                    received_messages=excluded.received_messages,
+                    sent_messages=excluded.sent_messages,
                     group_join_count=excluded.group_join_count,
                     group_leave_count=excluded.group_leave_count,
                     friend_add_count=excluded.friend_add_count,
@@ -239,6 +246,8 @@ class DAUService(DailyScanService):
                     msg_stats['active_groups'],
                     msg_stats['total_messages'],
                     msg_stats['private_messages'],
+                    msg_stats['received_messages'],
+                    msg_stats['sent_messages'],
                     event_stats['group_join_count'],
                     event_stats['group_leave_count'],
                     event_stats['friend_add_count'],

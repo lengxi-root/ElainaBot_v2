@@ -111,6 +111,8 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
                 data.get('active_groups', 0),
                 data.get('total_messages', 0),
                 data.get('private_messages', 0),
+                data.get('received_messages', 0),
+                data.get('sent_messages', 0),
                 data.get('group_join_count', 0),
                 data.get('group_leave_count', 0),
                 data.get('friend_add_count', 0),

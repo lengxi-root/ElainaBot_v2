@@ -38,6 +38,8 @@ DAU_TABLE_SQL = """
         active_groups INTEGER DEFAULT 0,
         total_messages INTEGER DEFAULT 0,
         private_messages INTEGER DEFAULT 0,
+        received_messages INTEGER DEFAULT 0,
+        sent_messages INTEGER DEFAULT 0,
         group_join_count INTEGER DEFAULT 0,
         group_leave_count INTEGER DEFAULT 0,
         friend_add_count INTEGER DEFAULT 0,
@@ -146,14 +148,17 @@ _INSERTS = {
     'error': 'INSERT INTO log (timestamp, appid, module_type, module_name, content, traceback, context) VALUES (?,?,?,?,?,?,?)',
     'lifecycle': 'INSERT INTO log (timestamp, type, user_id, group_id, extra) VALUES (?,?,?,?,?)',
     'dau': """INSERT INTO log (date, active_users, active_groups, total_messages, private_messages,
+              received_messages, sent_messages,
               group_join_count, group_leave_count, friend_add_count, friend_remove_count,
               message_stats_detail, user_stats_detail, command_stats_detail)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
               ON CONFLICT(date) DO UPDATE SET
               active_users=MAX(active_users, excluded.active_users),
               active_groups=MAX(active_groups, excluded.active_groups),
               total_messages=MAX(total_messages, excluded.total_messages),
               private_messages=MAX(private_messages, excluded.private_messages),
+              received_messages=MAX(received_messages, excluded.received_messages),
+              sent_messages=MAX(sent_messages, excluded.sent_messages),
               group_join_count=group_join_count+excluded.group_join_count,
               group_leave_count=group_leave_count+excluded.group_leave_count,
               friend_add_count=friend_add_count+excluded.friend_add_count,
