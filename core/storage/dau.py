@@ -155,24 +155,26 @@ class DAUService(DailyScanService):
                 'sent_messages': row['sent'],
             }
 
-            cur.execute("""
+            # 详情统计仅计接收消息, 全量群仅计艾特机器人的
+            cur.execute(f"""
                 SELECT substr(timestamp, 12, 2) AS hr, COUNT(*) AS c
-                FROM log GROUP BY hr ORDER BY c DESC LIMIT 1
+                FROM log WHERE direction != 'send' AND {at_ok}
+                GROUP BY hr ORDER BY c DESC LIMIT 1
             """)
             r = cur.fetchone()
             stats['peak_hour'] = int(r['hr']) if r and r['hr'] else 0
             stats['peak_hour_count'] = r['c'] if r else 0
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT group_id, COUNT(*) AS c FROM log
-                WHERE group_id != '' AND group_id != 'c2c'
+                WHERE group_id != '' AND group_id != 'c2c' AND direction != 'send' AND {at_ok}
                 GROUP BY group_id ORDER BY c DESC LIMIT 10
             """)
             stats['top_groups'] = [{'group_id': r['group_id'], 'message_count': r['c']} for r in cur.fetchall()]
 
-            cur.execute("""
+            cur.execute(f"""
                 SELECT user_id, COUNT(*) AS c FROM log
-                WHERE user_id != ''
+                WHERE user_id != '' AND direction != 'send' AND {at_ok}
                 GROUP BY user_id ORDER BY c DESC LIMIT 10
             """)
             stats['top_users'] = [{'user_id': r['user_id'], 'message_count': r['c']} for r in cur.fetchall()]
