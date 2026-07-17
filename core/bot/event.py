@@ -137,6 +137,8 @@ class EventHandlerMixin:
         return content
 
     def _message_log_data(self, event, content, raw_json):
+        # 仅全量群消息区分是否艾特机器人; 非全量消息收不到未艾特消息, 一律算艾特
+        at_bot = event.is_at_self if event.event_type == GROUP_MESSAGE_CREATE else True
         return {
             'message_id': event.message_id or '',
             'user_id': event.user_id or '',
@@ -145,6 +147,7 @@ class EventHandlerMixin:
             'content': content,
             'raw_message': raw_json,
             'direction': 'receive',
+            'at_bot': at_bot,
         }
 
     def _message_web_data(self, bot, event, appid, content, raw_json):
