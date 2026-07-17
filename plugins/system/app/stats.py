@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 
 from core.plugin.decorators import handler
+from core.storage.lifecycle_stats import compute_lifecycle_counts
 
 from ._dau_image import render_dau_image
 from ._reply import reply
@@ -151,6 +152,17 @@ def _query_today_stats_sync(bot):
         f"SELECT user_id, COUNT(*) AS c FROM log WHERE user_id != '' AND {_RECV} GROUP BY user_id ORDER BY c DESC LIMIT 3",
         date=today,
     )
+
+    lifecycle = q(
+        'lifecycle',
+        'SELECT type, user_id, group_id FROM log ORDER BY id',
+        date=today,
+    )
+    counts = compute_lifecycle_counts(
+        (r.get('type', ''), r.get('user_id', ''), r.get('group_id', '')) for r in lifecycle
+    )
+    stats['group_join'] = counts['group_join_count']
+    stats['group_leave'] = counts['group_leave_count']
     return stats
 
 
@@ -208,6 +220,10 @@ def _build_dau_message(event, stats, date, elapsed_ms, y_stats=None, is_today=Fa
             '📱',
         )
     )
+
+    if 'group_join' in stats:
+        info.append(f"➕ 今日加群: {stats.get('group_join', 0)}")
+        info.append(f"➖ 今日退群: {stats.get('group_leave', 0)}")
 
     peak_hour = stats.get('peak_hour', 0)
     peak_count = stats.get('peak_hour_count', 0)
@@ -381,6 +397,8 @@ async def _handle_history_dau(event, bot, date_str):
         'received': data.get('received_messages', 0) or 0,
         'sent': data.get('sent_messages', 0) or 0,
         'private': data.get('private_messages', 0),
+        'group_join': data.get('group_join_count', 0) or 0,
+        'group_leave': data.get('group_leave_count', 0) or 0,
         'peak_hour': detail.get('peak_hour', 0),
         'peak_hour_count': detail.get('peak_hour_count', 0),
         'top_groups': detail.get('top_groups', []),

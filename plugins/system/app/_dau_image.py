@@ -197,9 +197,11 @@ def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
     metric_h = 190
     small_h = 150
     rank_h = 104 + list_rows * 84
+    has_lifecycle = 'group_join' in stats
+    small_rows = 2 if has_lifecycle else 1
     # 内容底部 = 卡片起点(header_h-60) + 指标区 + 小卡区 + 排行区 + 页脚
     height = (header_h - 60) + (metric_h * 2 + gap * 2 + 22) \
-        + (small_h + gap + 14) + (rank_h + 40) + 70
+        + (small_h + gap) * small_rows + 14 + (rank_h + 40) + 70
 
     img = Image.new('RGB', (width, height), _PAGE_BG)
     d = ImageDraw.Draw(img)
@@ -274,35 +276,48 @@ def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
 
     y += metric_h * 2 + gap * 2 + 22
 
-    # ===== 私聊消息 / 最活跃时段 =====
-    row = [
+    # ===== 小卡: 私聊/最活跃时段 (+可选 加群/退群) =====
+    small_cards = [
         ('私聊消息', _fmt_num(stats.get('private', 0)),
-         _y('private'), stats.get('private', 0), None, ((0, 153, 214), (227, 244, 253))),
+         _y('private'), stats.get('private', 0), None, 'chat', ((0, 153, 214), (227, 244, 253))),
         ('最活跃时段', f"{stats.get('peak_hour', 0)}:00",
-         None, None, f"{_fmt_num(stats.get('peak_hour_count', 0))}条", ((233, 84, 152), (253, 233, 242))),
+         None, None, f"{_fmt_num(stats.get('peak_hour_count', 0))}条", 'clock', ((233, 84, 152), (253, 233, 242))),
     ]
-    for i, (label, val, y_val, raw, extra, (icon_fg, icon_bg)) in enumerate(row):
-        cx = pad + i * (card_w + gap)
-        _card(img, d, (cx, y, cx + card_w, y + small_h))
+    if has_lifecycle:
+        small_cards += [
+            ('今日加群', _fmt_num(stats.get('group_join', 0)),
+             None, None, None, 'plus', ((0, 168, 112), (227, 249, 240))),
+            ('今日退群', _fmt_num(stats.get('group_leave', 0)),
+             None, None, None, 'minus', ((227, 77, 89), (253, 236, 238))),
+        ]
+    for i, (label, val, y_val, raw, extra, icon, (icon_fg, icon_bg)) in enumerate(small_cards):
+        cx = pad + (i % 2) * (card_w + gap)
+        cy = y + (i // 2) * (small_h + gap)
+        _card(img, d, (cx, cy, cx + card_w, cy + small_h))
         # 图标块
-        icx, icy = cx + 32, y + (small_h - 56) // 2
+        icx, icy = cx + 32, cy + (small_h - 56) // 2
         d.rounded_rectangle((icx, icy, icx + 56, icy + 56), radius=16, fill=icon_bg)
-        if i == 0:  # 聊天气泡
+        if icon == 'chat':  # 聊天气泡
             d.rounded_rectangle((icx + 14, icy + 16, icx + 42, icy + 36), radius=8, fill=icon_fg)
             d.polygon([(icx + 20, icy + 34), (icx + 28, icy + 34), (icx + 18, icy + 42)], fill=icon_fg)
-        else:  # 时钟
+        elif icon == 'clock':  # 时钟
             d.ellipse((icx + 13, icy + 13, icx + 43, icy + 43), outline=icon_fg, width=4)
             d.line([(icx + 28, icy + 21), (icx + 28, icy + 29), (icx + 35, icy + 32)], fill=icon_fg, width=4)
-        d.text((cx + 108, y + 26), label, font=_font(24), fill=_TEXT_SECONDARY)
+        elif icon == 'plus':  # 加号
+            d.rounded_rectangle((icx + 25, icy + 13, icx + 31, icy + 43), radius=3, fill=icon_fg)
+            d.rounded_rectangle((icx + 13, icy + 25, icx + 43, icy + 31), radius=3, fill=icon_fg)
+        else:  # 减号
+            d.rounded_rectangle((icx + 13, icy + 25, icx + 43, icy + 31), radius=3, fill=icon_fg)
+        d.text((cx + 108, cy + 26), label, font=_font(24), fill=_TEXT_SECONDARY)
         vf = _font(44, bold=True)
-        d.text((cx + 108, y + 62), val, font=vf, fill=_TEXT)
+        d.text((cx + 108, cy + 62), val, font=vf, fill=_TEXT)
         vw = _text_w(d, val, vf)
         if y_val is not None and raw is not None:
-            _delta_pill(d, cx + 108 + vw + 20, y + 74, int(raw) - int(y_val))
+            _delta_pill(d, cx + 108 + vw + 20, cy + 74, int(raw) - int(y_val))
         elif extra:
-            d.text((cx + 108 + vw + 20, y + 82), extra, font=_font(24), fill=_TEXT_TERTIARY)
+            d.text((cx + 108 + vw + 20, cy + 82), extra, font=_font(24), fill=_TEXT_TERTIARY)
 
-    y += small_h + gap + 14
+    y += (small_h + gap) * small_rows + 14
 
     # ===== 排行榜 =====
     for i, (label, items, key) in enumerate(
