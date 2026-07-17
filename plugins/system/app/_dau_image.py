@@ -28,9 +28,13 @@ _ACCENTS = (
 )
 _RANK_COLORS = ((255, 172, 20), (160, 174, 192), (219, 154, 108))  # 金银铜
 
+# 自定义字体目录: 放置任意 ttf/ttc/otf 中文字体即可优先使用 (bold 文件名含 bold/bd 时作为粗体)
+_CUSTOM_FONT_DIR = os.path.join(os.path.dirname(__file__), 'fonts')
+
 _FONT_PATHS = [
     'C:/Windows/Fonts/msyh.ttc',
     'C:/Windows/Fonts/msyh.ttf',
+    'C:/Windows/Fonts/simhei.ttf',
     '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
     '/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc',
     '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
@@ -45,36 +49,64 @@ _FONT_BOLD_PATHS = [
     '/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc',
 ]
 
+# 文件名含这些关键字的字体视为中文字体
+_CJK_NAME_HINTS = (
+    'cjk', 'wqy', 'msyh', 'yahei', 'simhei', 'simsun', 'pingfang',
+    'sourcehan', 'source-han', 'notosanssc', 'notoserifsc', 'sarasa',
+    'harmonyos', 'alibaba', 'fallback', 'uming', 'ukai', 'zenhei',
+)
+
 _font_file = None
 _font_bold_file = None
 
 
+def _scan_font_dirs():
+    """递归扫描字体目录, 返回第一个疑似中文字体"""
+    dirs = [
+        _CUSTOM_FONT_DIR,
+        '/usr/share/fonts',
+        '/usr/local/share/fonts',
+        os.path.expanduser('~/.fonts'),
+        os.path.expanduser('~/.local/share/fonts'),
+    ]
+    for base in dirs:
+        if not os.path.isdir(base):
+            continue
+        is_custom = base == _CUSTOM_FONT_DIR
+        for root, _dirs, files in os.walk(base):
+            for name in sorted(files):
+                low = name.lower()
+                if not low.endswith(('.ttf', '.ttc', '.otf')):
+                    continue
+                if is_custom or any(h in low for h in _CJK_NAME_HINTS):
+                    return os.path.join(root, name)
+    return ''
+
+
 def _find_font():
+    """定位中文字体; 找不到返回 '' (调用方应回退文本)"""
     global _font_file, _font_bold_file
     if _font_file is not None:
         return _font_file
-    for p in _FONT_PATHS:
-        if os.path.isfile(p):
-            _font_file = p
-            break
-    else:
-        _font_file = ''
-    for p in _FONT_BOLD_PATHS:
-        if os.path.isfile(p):
-            _font_bold_file = p
-            break
-    else:
-        _font_bold_file = _font_file
+    found = next((p for p in _FONT_PATHS if os.path.isfile(p)), '') or _scan_font_dirs()
+    _font_file = found
+    bold = next((p for p in _FONT_BOLD_PATHS if os.path.isfile(p)), '')
+    if not bold and found:
+        d, base = os.path.split(found)
+        low = base.lower()
+        for cand in os.listdir(d):
+            cl = cand.lower()
+            if cl != low and ('bold' in cl or 'bd' in cl) and cl.endswith(('.ttf', '.ttc', '.otf')):
+                bold = os.path.join(d, cand)
+                break
+    _font_bold_file = bold or found
     return _font_file
 
 
 def _font(size, bold=False):
     from PIL import ImageFont
 
-    path = _font_bold_file if bold else _font_file
-    if path:
-        return ImageFont.truetype(path, size)
-    return ImageFont.load_default()
+    return ImageFont.truetype(_font_bold_file if bold else _font_file, size)
 
 
 def _fmt_num(n):
@@ -134,12 +166,13 @@ def _delta_pill(d, x, y, diff, h=40):
 
 
 def render_dau_image(stats, title, sub_title='', y_stats=None, elapsed_ms=None):
-    """渲染 DAU 统计卡片, 返回 PNG bytes; PIL 不可用时返回 None"""
+    """渲染 DAU 统计卡片, 返回 PNG bytes; PIL 或中文字体不可用时返回 None"""
     try:
         from PIL import Image, ImageDraw
     except ImportError:
         return None
-    _find_font()
+    if not _find_font():
+        return None
 
     width = 1000
     pad = 48
