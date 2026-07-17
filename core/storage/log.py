@@ -99,6 +99,7 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
                 _s(data.get('raw_message', '')),
                 _s(data.get('plugin_name', '')),
                 _s(data.get('direction', '')),
+                1 if data.get('at_bot', True) else 0,
                 _json_field(data, 'context', ''),
             )
         common = self._extract_common_row(log_type, data, ts)
@@ -111,6 +112,8 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin):
                 data.get('active_groups', 0),
                 data.get('total_messages', 0),
                 data.get('private_messages', 0),
+                data.get('received_messages', 0),
+                data.get('sent_messages', 0),
                 data.get('group_join_count', 0),
                 data.get('group_leave_count', 0),
                 data.get('friend_add_count', 0),
