@@ -266,3 +266,20 @@ def _ensure_indexes(conn, log_type):
             log.warning(f'创建索引失败 ({log_type}): {e}')
     with contextlib.suppress(Exception):
         conn.commit()
+
+
+_INDEX_NAME_RE = re.compile(r'CREATE INDEX IF NOT EXISTS (\w+)', re.IGNORECASE)
+
+
+def _missing_index_sqls(conn, log_type):
+    """返回该库缺失的索引建表语句列表"""
+    try:
+        existing = {row[1] for row in conn.execute("PRAGMA index_list('log')").fetchall()}
+    except Exception:
+        return []
+    missing = []
+    for sql in _INDEXES.get(log_type, ()):
+        m = _INDEX_NAME_RE.search(sql)
+        if m and m.group(1) not in existing:
+            missing.append(sql)
+    return missing
