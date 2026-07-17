@@ -9,12 +9,14 @@ from datetime import datetime
 MAX_LINES = 500
 
 _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[A-Za-z]')
+_LEVEL_RE = re.compile(r' - (DEBUG|INFO|WARNING|ERROR|CRITICAL)\s*-? ')
 
 _lines: list[dict] = []
 _lock = threading.Lock()
 _callbacks: list = []
 _installed = False
 _tls = threading.local()
+_last_level: dict[str, str] = {}
 
 
 class _Tee:
@@ -71,9 +73,17 @@ def _emit(stream, line):
     text = _ANSI_RE.sub('', line).rstrip('\r')
     if not text.strip():
         return
+    m = _LEVEL_RE.search(text)
+    if m:
+        level = m.group(1)
+        _last_level[stream] = level
+    else:
+        # 无等级标记的续行 (如 traceback) 继承同流上一行的等级
+        level = _last_level.get(stream, 'ERROR' if stream == 'stderr' else 'INFO')
     entry = {
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'stream': stream,
+        'level': level,
         'content': text,
     }
     with _lock:
