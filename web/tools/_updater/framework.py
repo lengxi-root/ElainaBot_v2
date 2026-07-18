@@ -3,6 +3,7 @@
 import fnmatch
 import json
 import os
+import re
 import shutil
 import zipfile
 from datetime import datetime
@@ -20,6 +21,14 @@ from web.tools._updater.shared import (
     _load_mirror_cache,
     log,
 )
+
+_SHA_RE = re.compile(r'[0-9a-f]{8,40}', re.IGNORECASE)
+
+
+def _normalize_version(version):
+    """commit SHA 统一为 8 位短 SHA"""
+    v = str(version or '').strip()
+    return v[:8] if _SHA_RE.fullmatch(v) else v
 
 
 class FrameworkUpdater:
@@ -55,11 +64,12 @@ class FrameworkUpdater:
     def _load_version(self):
         try:
             with open(self.version_file, encoding='utf-8') as f:
-                return json.load(f).get('version', 'unknown')
+                return _normalize_version(json.load(f).get('version', 'unknown'))
         except Exception:
             return 'unknown'
 
     def _save_version(self, version):
+        version = _normalize_version(version)
         try:
             with open(self.version_file, 'w', encoding='utf-8') as f:
                 json.dump(
@@ -98,6 +108,7 @@ class FrameworkUpdater:
         try:
             with open(self.version_file, encoding='utf-8') as f:
                 info = json.load(f)
+            info['version'] = _normalize_version(info.get('version', 'unknown'))
             info['custom_mirror'] = self.custom_mirror
             return info
         except Exception:
