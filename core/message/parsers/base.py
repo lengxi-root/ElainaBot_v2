@@ -86,7 +86,7 @@ def _parse_common_fields(event, d):
     """提取公共字段 (id/author/content/group/image)"""
     event.message_id = d.get('id', '')
     event.raw_content = d.get('content', '')
-    event.content = MessageUtils.sanitize_content(event.raw_content)
+    event.content = MessageUtils.sanitize_content(event.raw_content, keep_at=True)
     event.timestamp = d.get('timestamp', '')
     event.message_type = d.get('message_type')
     event.msg_elements = d.get('msg_elements', [])

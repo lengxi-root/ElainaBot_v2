@@ -35,6 +35,16 @@ class GroupMessageParser(MessageParser):
         super().parse(event, d)
         is_full = event.event_type == 'GROUP_MESSAGE_CREATE'
         self.handle_mentions(event, d, is_full)
+        if '<@' in event.content:
+            # 仅剔除艾特机器人自身, 保留艾特其他人的文本
+            for mention in event.mentions or []:
+                if not isinstance(mention, dict):
+                    continue
+                mid = mention.get('id')
+                if mention.get('is_you') and mid:
+                    for tag in (f'<@!{mid}>', f'<@{mid}>'):
+                        event.content = event.content.replace(tag, '')
+            event.content = event.content.strip()
         if is_full and '<@' in event.content and event.appid:
             only_self_at = event.is_at_self and not event.is_at_other_bot and not event.is_at_other_user and not event.is_at_all
             if only_self_at and not bot_openid.is_done(event.appid):
