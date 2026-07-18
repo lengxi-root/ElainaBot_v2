@@ -190,6 +190,7 @@ class Event:
         'guild_id',
         'channel_id',
         'message_type',
+        'content_with_at',
         'message_scene',
         'message_reference_id',
         'msg_elements',
@@ -244,6 +245,8 @@ class Event:
         self.guild_id = None
         self.channel_id = None
         self.message_type = None
+        # 保留艾特文本的内容 (仅剔除艾特机器人自身); 命令匹配仍用 content
+        self.content_with_at = ''
         self.message_scene = {}
         self.message_reference_id = ''
         self.msg_elements = []
