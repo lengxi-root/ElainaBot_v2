@@ -64,7 +64,7 @@ class FrameworkUpdater:
     def _load_version(self):
         try:
             with open(self.version_file, encoding='utf-8') as f:
-                return _normalize_version(json.load(f).get('version', 'unknown'))
+                return json.load(f).get('version', 'unknown')
         except Exception:
             return 'unknown'
 
@@ -108,7 +108,6 @@ class FrameworkUpdater:
         try:
             with open(self.version_file, encoding='utf-8') as f:
                 info = json.load(f)
-            info['version'] = _normalize_version(info.get('version', 'unknown'))
             info['custom_mirror'] = self.custom_mirror
             return info
         except Exception:
