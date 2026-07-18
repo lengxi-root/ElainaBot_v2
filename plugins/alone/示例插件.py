@@ -5,7 +5,7 @@ import os
 
 from aiohttp import web
 
-from core.message import MSG_TYPE_MARKDOWN, MSG_TYPE_TEXT
+from core.message._http import MSG_TYPE_MARKDOWN, MSG_TYPE_TEXT
 from core.plugin.decorators import handler, on_unload
 from core.plugin.web_pages import register_page, register_route, unregister_page
 
