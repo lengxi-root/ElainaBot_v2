@@ -538,7 +538,8 @@ def _gather_top(date, appid_filter):
     top_sql = {
         'groups': "SELECT group_id AS k, COUNT(*) AS c FROM log WHERE group_id!='' AND group_id!='c2c' AND direction!='send' AND COALESCE(at_bot,1)!=0 GROUP BY k ORDER BY c DESC LIMIT 10",
         'users': "SELECT user_id AS k, COUNT(*) AS c FROM log WHERE user_id!='' AND direction!='send' AND COALESCE(at_bot,1)!=0 GROUP BY k ORDER BY c DESC LIMIT 10",
-        'cmds': "SELECT plugin_name AS k, COUNT(*) AS c FROM log WHERE plugin_name!='' AND direction!='send' AND COALESCE(at_bot,1)!=0 GROUP BY k ORDER BY c DESC LIMIT 10",
+        # plugin_name 仅在回复日志 (direction='send') 中写入, 不能按 direction!='send' 过滤
+        'cmds': "SELECT plugin_name AS k, COUNT(*) AS c FROM log WHERE plugin_name!='' GROUP BY k ORDER BY c DESC LIMIT 10",
     }
 
     for _, inst in iter_bots(_bot_manager, appid_filter):
