@@ -335,26 +335,24 @@ await event.reply(
 框架默认按 `bot.yaml` 的 `message.use_markdown` 决定用 markdown (`msg_type=2`) 还是纯文本 (`msg_type=0`) 发送。单条消息可通过 `msg_type` 参数强制覆盖:
 
 ```python
-from core.message._http import MSG_TYPE_TEXT, MSG_TYPE_MARKDOWN
-
 # 强制以纯文本发送 (即使全局开启 use_markdown)
-await event.reply("**不会加粗**, 原样显示", msg_type=MSG_TYPE_TEXT)
+await event.reply("**不会加粗**, 原样显示", msg_type=0)
 
 # 强制以 markdown 发送 (即使全局关闭 use_markdown)
-await event.reply("**加粗** 和 [链接](https://example.com)", msg_type=MSG_TYPE_MARKDOWN)
+await event.reply("**加粗** 和 [链接](https://example.com)", msg_type=2)
 
 # 主动消息同样支持
-await event.send_to_group(event.group_id, "# 标题", msg_type=MSG_TYPE_MARKDOWN)
+await event.send_to_group(event.group_id, "# 标题", msg_type=2)
 ```
 
-| 常量 | 值 | 说明 |
-| --- | --- | --- |
-| `MSG_TYPE_TEXT` | `0` | 纯文本 |
-| `MSG_TYPE_MARKDOWN` | `2` | 原生 Markdown |
-| `MSG_TYPE_ARK` | `3` | Ark 卡片 (由 `reply_ark` 自动设置) |
-| `MSG_TYPE_MEDIA` | `7` | 富媒体 (由 `reply_image` 等自动设置) |
+| 值 | 说明 |
+| --- | --- |
+| `0` | 纯文本 |
+| `2` | 原生 Markdown |
+| `3` | Ark 卡片 (由 `reply_ark` 自动设置) |
+| `7` | 富媒体 (由 `reply_image` 等自动设置) |
 
-> 常量从 `core.message._http` 导入。不传 `msg_type` 时按 `message.use_markdown` 配置决定。
+> 不传 `msg_type` 时按 `message.use_markdown` 配置决定。
 
 **markdown 全局后缀**: markdown 消息会自动拼接 `bot.yaml` 中 `message.markdown_suffix` 配置的全局后缀 (支持 `\n` 等转义)。单条消息可用 `skip_suffix=True` 跳过:
 

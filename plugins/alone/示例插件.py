@@ -5,7 +5,6 @@ import os
 
 from aiohttp import web
 
-from core.message._http import MSG_TYPE_MARKDOWN, MSG_TYPE_TEXT
 from core.plugin.decorators import handler, on_unload
 from core.plugin.web_pages import register_page, register_route, unregister_page
 
@@ -49,14 +48,16 @@ async def send_file(event, match):
 
 @handler(r'^强制md$', name='强制markdown', desc='无视全局配置, 强制以 markdown 发送', owner_only=True)
 async def force_markdown(event, match):
+    # msg_type=2: markdown
     await event.reply(
         "# Markdown 标题\n**加粗** / *斜体* / [链接](https://i.elaina.vin/)",
-        msg_type=MSG_TYPE_MARKDOWN)
+        msg_type=2)
 
 
 @handler(r'^强制文本$', name='强制纯文本', desc='无视全局配置, 强制以纯文本发送', owner_only=True)
 async def force_text(event, match):
-    await event.reply("**这段不会加粗**, markdown 语法原样显示", msg_type=MSG_TYPE_TEXT)
+    # msg_type=0: 纯文本
+    await event.reply("**这段不会加粗**, markdown 语法原样显示", msg_type=0)
 
 
 @handler(r'^无后缀$', name='跳过markdown后缀', desc='跳过全局 markdown_suffix 后缀', owner_only=True)
@@ -68,7 +69,7 @@ async def skip_suffix_demo(event, match):
 @handler(r'^主动md\s+(\S+)$', name='主动markdown', desc='向指定群强制发送 markdown 主动消息', owner_only=True)
 async def proactive_markdown(event, match):
     # send_to_group / send_to_user 同样支持 msg_type / skip_suffix
-    await event.send_to_group(match.group(1), "# 主动 Markdown 消息", msg_type=MSG_TYPE_MARKDOWN)
+    await event.send_to_group(match.group(1), "# 主动 Markdown 消息", msg_type=2)
     await event.reply("✅ 已发送")
 
 
