@@ -103,8 +103,8 @@ _EVENT_ID_TYPES = frozenset({INTERACTION_CREATE, GROUP_ADD_ROBOT, FRIEND_ADD, GR
 
 # 回复端点模板 (event_type -> lambda event: endpoint_str)
 _REPLY_ENDPOINTS = {
-    GROUP_AT_MESSAGE_CREATE: lambda e: (f'/v2/groups/{e.group_openid or e.group_id}/messages'),
-    GROUP_MESSAGE_CREATE: lambda e: (f'/v2/groups/{e.group_openid or e.group_id}/messages'),
+    GROUP_AT_MESSAGE_CREATE: lambda e: f'/v2/groups/{e.group_id}/messages',
+    GROUP_MESSAGE_CREATE: lambda e: f'/v2/groups/{e.group_id}/messages',
     C2C_MESSAGE_CREATE: lambda e: f'/v2/users/{e.raw_user_id or e.user_id}/messages',
     AT_MESSAGE_CREATE: lambda e: f'/channels/{e.channel_id}/messages',
     DIRECT_MESSAGE_CREATE: lambda e: f'/dms/{e.guild_id}/messages',
@@ -181,16 +181,13 @@ class Event:
         'user_id',
         'raw_user_id',
         'username',
-        'member_openid',
         'member_role',
         'union_openid',
         'is_bot',
         'group_id',
-        'group_openid',
         'guild_id',
         'channel_id',
         'message_type',
-        'content_with_at',
         'message_scene',
         'message_reference_id',
         'msg_elements',
@@ -236,17 +233,13 @@ class Event:
         self.user_id = None
         self.raw_user_id = None
         self.username = None
-        self.member_openid = None
         self.member_role = ''
         self.union_openid = None
         self.is_bot = None
         self.group_id = None
-        self.group_openid = None
         self.guild_id = None
         self.channel_id = None
         self.message_type = None
-        # 保留艾特文本的内容 (仅剔除艾特机器人自身); 命令匹配仍用 content
-        self.content_with_at = ''
         self.message_scene = {}
         self.message_reference_id = ''
         self.msg_elements = []
@@ -371,7 +364,7 @@ class Event:
 
     def _fallback_msg_ep(self, strict=False):
         """group/user 消息端点 (strict: 仅在 is_group/is_direct 时返回)"""
-        gid = self.group_openid or self.group_id
+        gid = self.group_id
         uid = self.raw_user_id or self.user_id
         if gid and (not strict or self.is_group):
             return f'/v2/groups/{gid}/messages'
@@ -381,7 +374,7 @@ class Event:
 
     @property
     def recall_endpoint(self):
-        gid = self.group_openid or self.group_id
+        gid = self.group_id
         uid = self.raw_user_id or self.user_id
         if self.is_group and gid:
             return f'/v2/groups/{gid}/messages/{{message_id}}'
@@ -393,7 +386,7 @@ class Event:
 
     @property
     def media_upload_endpoint(self):
-        gid = self.group_openid or self.group_id
+        gid = self.group_id
         uid = self.raw_user_id or self.user_id
         if self.is_group and gid:
             return f'/v2/groups/{gid}/files'
