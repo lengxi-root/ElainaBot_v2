@@ -166,8 +166,8 @@ async def on_demo_ack(event, match):
 # ==================== 用户入群回复示例 ====================
 # 群内有新用户加入时, 框架下发 GROUP_MEMBER_ADD 生命周期事件 (用户退群为 GROUP_MEMBER_REMOVE),
 # 用 event_types 订阅即可在用户入群时自动回复 (event.reply 会发到该群)。
-#   - event.user_id / event.member_openid : 入群用户的 openid
-#   - event.group_id                      : 群 openid
+#   - event.user_id  : 入群用户的 openid
+#   - event.group_id : 群 openid
 # 注意: 正则 r'' 对生命周期事件恒匹配; 这类事件无消息文本, 不要依赖 match 分组。
 
 @handler(r'', name='用户入群回复', desc='有新成员加入群聊时的处理示例（默认不发送，避免影响正常使用）', event_types=['GROUP_MEMBER_ADD'])

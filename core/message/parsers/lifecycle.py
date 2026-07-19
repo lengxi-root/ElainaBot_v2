@@ -38,7 +38,6 @@ class GroupMemberAddParser(LifecycleParser):
 
     def parse(self, event, d):
         self._parse_base(event, d, 'member_openid')
-        event.member_openid = event.user_id
         event.content = f'用户 {event.user_id} 加入群聊 {event.group_id}'
 
 
@@ -47,7 +46,6 @@ class GroupMemberRemoveParser(LifecycleParser):
 
     def parse(self, event, d):
         self._parse_base(event, d, 'member_openid')
-        event.member_openid = event.user_id
         event.content = f'用户 {event.user_id} 退出群聊 {event.group_id}'
 
 
