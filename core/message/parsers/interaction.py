@@ -44,5 +44,4 @@ class InteractionParser(MessageParser):
         self.apply_message_scene(event, d)
 
         resolved = d.get('data', {}).get('resolved', {})
-        button_data = resolved.get('button_data', '') or resolved.get('button_id', '')
-        event.content = MessageUtils.sanitize_content(button_data)
+        event.content = MessageUtils.sanitize_content(resolved.get('button_data', ''))

@@ -236,7 +236,6 @@ async def filter_keywords(event):
 | `event.message_scene` | `dict` | 消息场景信息 (`source` / `ext` 等) |
 | `event.raw_user_id` | `str` | 平台原始用户 OpenID (不受 union_id 配置影响) |
 | `event.union_openid` | `str` | 用户 union_openid (跨机器人统一 ID, 可能为空) |
-| `event.content_with_at` | `str` | 保留 @其他人 文本的内容 (仅剔除 @机器人自身) |
 | `event.msg_elements` | `list` | 消息元素列表 (平台原始 msg_elements) |
 | `event.member_role` | `str` | 发送者群身份 (`admin` / `owner` / 空) |
 | `event.bot_member_role` | `str` | 机器人在该群的身份 (被@时由 mentions 解析) |
