@@ -55,6 +55,8 @@ bots:
     blacklist:
       user_list: []                    # 用户黑名单列表 (OpenID)
       group_list: []                   # 群黑名单列表 (群 OpenID)
+      user_reasons: {}                 # 用户黑名单理由 {OpenID: 理由}
+      group_reasons: {}                # 群黑名单理由 {群 OpenID: 理由}
 
     # 未@消息 (开启后全量消息匹配正则插件, 不判断是否@机器人)
     non_at_message:

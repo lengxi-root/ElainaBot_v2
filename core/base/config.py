@@ -49,6 +49,8 @@ _BOT_DEFAULTS = {
     'maintenance.enabled': False,
     'blacklist.user_list': [],
     'blacklist.group_list': [],
+    'blacklist.user_reasons': {},
+    'blacklist.group_reasons': {},
     'non_at_message.enabled': True,
     'non_at_message.group_whitelist': [],
 }

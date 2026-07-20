@@ -9,10 +9,15 @@ class _BlacklistMixin:
     # ==================== 黑名单 (仅从 bot.yaml 读取, 列表非空即生效) ====================
 
     def _check_blacklist(self, event):
+        """返回 (kind, reason) 或 None"""
         appid = event.appid or self._appid
         for kind, value in (('user', event.user_id), ('group', event.group_id)):
-            if value and value in (cfg.get_bot_setting(appid, f'blacklist.{kind}_list', []) or []):
-                return kind
+            if not value:
+                continue
+            bl = cfg.get_bot_setting(appid, f'blacklist.{kind}_list', []) or []
+            if str(value) in {str(x) for x in bl}:
+                reasons = cfg.get_bot_setting(appid, f'blacklist.{kind}_reasons', {}) or {}
+                return kind, str(reasons.get(str(value)) or '未指明原因')
         return None
 
     def _is_owner(self, event):
