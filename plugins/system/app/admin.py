@@ -9,6 +9,7 @@ import sys
 
 from core.base.config import cfg
 from core.base.logger import PLUGIN, get_logger
+from core.plugin._blacklist import get_blacklist_map, set_blacklist_map
 from core.plugin.decorators import handler, on_load
 
 from ._reply import reply
@@ -185,20 +186,12 @@ def _check_restart_status():
 # ==================== 用户黑名单 ====================
 
 
-def _get_blacklist(appid, key):
-    return [str(x) for x in (cfg.get_bot_setting(appid, f'blacklist.{key}_list', []) or [])]
-
-
-def _set_blacklist(appid, key, values):
-    return cfg.set_bot_setting(appid, f'blacklist.{key}_list', sorted(values))
-
-
-def _get_reasons(appid, key):
-    return dict(cfg.get_bot_setting(appid, f'blacklist.{key}_reasons', {}) or {})
-
-
-def _set_reasons(appid, key, reasons):
-    return cfg.set_bot_setting(appid, f'blacklist.{key}_reasons', reasons)
+def _bl_lines(lines, bl_map):
+    if not bl_map:
+        lines.append('✅ 空')
+        return
+    for idx, (bid, reason) in enumerate(sorted(bl_map.items()), 1):
+        lines.append(f'{idx}. {_mask_id(bid)}' + (f'（{reason}）' if reason else ''))
 
 
 @handler(r'^黑名单帮助$', name='黑名单帮助', desc='查看黑名单管理帮助', owner_only=True)
@@ -207,25 +200,11 @@ async def show_blacklist_help(event, match):
 
     # 用户黑名单
     lines.append('\n━━━ 🚫 用户黑名单 ━━━')
-    user_list = _get_blacklist(event.appid, 'user')
-    user_reasons = _get_reasons(event.appid, 'user')
-    if not user_list:
-        lines.append('✅ 空')
-    else:
-        for idx, uid in enumerate(sorted(user_list), 1):
-            reason = user_reasons.get(uid)
-            lines.append(f'{idx}. {_mask_id(uid)}' + (f'（{reason}）' if reason else ''))
+    _bl_lines(lines, get_blacklist_map(event.appid, 'user'))
 
     # 群黑名单
     lines.append('\n━━━ 🚫 群黑名单 ━━━')
-    group_list = _get_blacklist(event.appid, 'group')
-    group_reasons = _get_reasons(event.appid, 'group')
-    if not group_list:
-        lines.append('✅ 空')
-    else:
-        for idx, gid in enumerate(sorted(group_list), 1):
-            reason = group_reasons.get(gid)
-            lines.append(f'{idx}. {_mask_id(gid)}' + (f'（{reason}）' if reason else ''))
+    _bl_lines(lines, get_blacklist_map(event.appid, 'group'))
 
     await reply(event, '\n'.join(lines))
 
@@ -236,7 +215,7 @@ async def view_blacklist(event, match):
 
 
 @handler(
-    r'^黑名单添加 +([a-zA-Z0-9]+)(?: +(.+))?$',
+    r'^黑名单添加 +([a-zA-Z0-9]{32})(?: +(.+))?$',
     name='黑名单添加',
     desc='添加用户到黑名单，可附带理由',
     owner_only=True,
@@ -244,8 +223,6 @@ async def view_blacklist(event, match):
 async def add_blacklist(event, match):
     user_id = match.group(1)
     reason = (match.group(2) or '').strip()
-    if not user_id:
-        return await reply(event, '请提供用户ID\n💡 格式：黑名单添加 [用户ID] [理由(可选)]')
 
     # 检查是否是主人
     try:
@@ -256,36 +233,29 @@ async def add_blacklist(event, match):
     except Exception:
         pass
 
-    user_list = _get_blacklist(event.appid, 'user')
-    if user_id in user_list:
+    bl = get_blacklist_map(event.appid, 'user')
+    if user_id in bl:
         return await reply(event, f'用户 {user_id} 已在黑名单中')
-    user_list.append(user_id)
-    if not _set_blacklist(event.appid, 'user', user_list):
+    bl[user_id] = reason or None
+    if not set_blacklist_map(event.appid, 'user', bl):
         return await reply(event, '写入配置失败，无法操作黑名单')
-    if reason:
-        reasons = _get_reasons(event.appid, 'user')
-        reasons[user_id] = reason
-        _set_reasons(event.appid, 'user', reasons)
     await reply(event, f'已添加用户 {user_id} 到黑名单' + (f'，理由：{reason}' if reason else ''))
 
 
 @handler(
-    r'^黑名单删除 *([a-zA-Z0-9]+)$',
+    r'^黑名单删除 *([a-zA-Z0-9]{32})$',
     name='黑名单删除',
     desc='从黑名单移除用户',
     owner_only=True,
 )
 async def remove_blacklist(event, match):
     user_id = match.group(1)
-    user_list = _get_blacklist(event.appid, 'user')
-    if user_id not in user_list:
+    bl = get_blacklist_map(event.appid, 'user')
+    if user_id not in bl:
         return await reply(event, f'用户 {user_id} 不在黑名单中')
-    user_list.remove(user_id)
-    if not _set_blacklist(event.appid, 'user', user_list):
+    del bl[user_id]
+    if not set_blacklist_map(event.appid, 'user', bl):
         return await reply(event, '写入配置失败，无法操作黑名单')
-    reasons = _get_reasons(event.appid, 'user')
-    if reasons.pop(user_id, None) is not None:
-        _set_reasons(event.appid, 'user', reasons)
     await reply(event, f'已移除用户 {user_id}')
 
 
@@ -293,7 +263,7 @@ async def remove_blacklist(event, match):
 
 
 @handler(
-    r'^群黑名单添加 +([a-zA-Z0-9]+)(?: +(.+))?$',
+    r'^群黑名单添加 +([a-zA-Z0-9]{32})(?: +(.+))?$',
     name='群黑名单添加',
     desc='添加群到黑名单，可附带理由',
     owner_only=True,
@@ -301,36 +271,27 @@ async def remove_blacklist(event, match):
 async def add_group_blacklist(event, match):
     group_id = match.group(1)
     reason = (match.group(2) or '').strip()
-    if not group_id:
-        return await reply(event, '❌ 请提供群组ID\n💡 格式：群黑名单添加 [群ID] [理由(可选)]')
-    group_list = _get_blacklist(event.appid, 'group')
-    if group_id in group_list:
+    bl = get_blacklist_map(event.appid, 'group')
+    if group_id in bl:
         return await reply(event, f'群组 {group_id} 已在群黑名单中')
-    group_list.append(group_id)
-    if not _set_blacklist(event.appid, 'group', group_list):
+    bl[group_id] = reason or None
+    if not set_blacklist_map(event.appid, 'group', bl):
         return await reply(event, '写入配置失败，无法操作黑名单')
-    if reason:
-        reasons = _get_reasons(event.appid, 'group')
-        reasons[group_id] = reason
-        _set_reasons(event.appid, 'group', reasons)
     await reply(event, f'已添加群组 {group_id} 到群黑名单' + (f'，理由：{reason}' if reason else ''))
 
 
 @handler(
-    r'^群黑名单删除 *([a-zA-Z0-9]+)$',
+    r'^群黑名单删除 *([a-zA-Z0-9]{32})$',
     name='群黑名单删除',
     desc='从群黑名单移除群',
     owner_only=True,
 )
 async def remove_group_blacklist(event, match):
     group_id = match.group(1)
-    group_list = _get_blacklist(event.appid, 'group')
-    if group_id not in group_list:
+    bl = get_blacklist_map(event.appid, 'group')
+    if group_id not in bl:
         return await reply(event, f'群组 {group_id} 不在群黑名单中')
-    group_list.remove(group_id)
-    if not _set_blacklist(event.appid, 'group', group_list):
+    del bl[group_id]
+    if not set_blacklist_map(event.appid, 'group', bl):
         return await reply(event, '写入配置失败，无法操作黑名单')
-    reasons = _get_reasons(event.appid, 'group')
-    if reasons.pop(group_id, None) is not None:
-        _set_reasons(event.appid, 'group', reasons)
     await reply(event, f'已移除群组 {group_id}')
