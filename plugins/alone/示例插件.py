@@ -176,9 +176,20 @@ async def send_subscribe_buttons(event, match):
     )
 
 
+# 用户点击订阅按钮后, 平台下发 SUBSCRIBE_MESSAGE_STATUS 订阅事件, 事件中返回 subscribe_id
+# (发送订阅消息的票据, 注意不是订阅事件本身的 event id)。
+# 框架已自动把 (模板ID ↔ 群/用户, subscribe_id) 写入订阅表, 无需手动存储; 如需自行处理可订阅该事件:
+
+@handler(r'', name='订阅状态事件', desc='用户订阅/取消订阅时触发', event_types=['SUBSCRIBE_MESSAGE_STATUS'])
+async def on_subscribe_status(event, match):
+    # event.subscribe_results: [{'custom_template_id': ..., 'op': 1允许/2拒绝, 'subscribe_id': ..., ...}, ...]
+    for r in event.subscribe_results:
+        _ = r.get('subscribe_id')  # 发送订阅消息用的票据 (框架已自动入库, 这里仅演示读取)
+
+
 @handler(r'^订阅消息$', name='订阅消息推送示例', desc='向已订阅的群推送订阅消息', owner_only=True)
 async def send_subscribe_message(event, match):
-    # 群成员点击订阅按钮 (type=4) 完成订阅后, 框架会自动记录订阅关系 (模板ID ↔ 群, 含 subscribe_id)。
+    # 使用订阅事件返回并已入库的 subscribe_id 票据推送。
     # 推送时必须携带 subscribe_id, 不填写将按普通主动消息推送 (占用主动消息条数)。
     subscribe = '你的AppID_模板ID'  # 替换为订阅按钮 subscribe 字段使用的订阅模板 ID
     ls = _get_log_service(event)

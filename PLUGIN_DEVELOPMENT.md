@@ -455,7 +455,9 @@ await event.reply(
 
 #### 发送订阅消息
 
-群成员点击订阅按钮完成订阅后, 框架会自动记录订阅关系 (模板ID ↔ 群, 含 `subscribe_id`)。推送内容为普通消息即可 (文本 / markdown / 图片均可), 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
+用户点击订阅按钮后, 平台下发 `SUBSCRIBE_MESSAGE_STATUS` 订阅事件, 事件中返回 `subscribe_id` (发送订阅消息的票据, 注意不是订阅事件本身的 event id)。框架会自动记录订阅关系 (模板ID ↔ 群/用户, 含 `subscribe_id`), 也可用 `event_types=['SUBSCRIBE_MESSAGE_STATUS']` 订阅该事件自行读取 `event.subscribe_results`。
+
+推送内容为普通消息即可 (文本 / markdown / 图片均可), 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
 subscribe = '你的AppID_模板ID'  # 订阅按钮 subscribe 字段使用的订阅模板 ID
