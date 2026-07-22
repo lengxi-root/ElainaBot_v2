@@ -417,6 +417,82 @@ class TestBuildKeyboardLimitTips:
         assert 'unsupport_tips' not in result['content']['rows'][0]['buttons'][0]['action']
 
 
+# ==================== modal / subscribe 测试 ====================
+
+
+class TestBuildKeyboardModalSubscribe:
+    """二次确认弹窗和订阅按钮"""
+
+    def test_modal_str(self):
+        """字符串 modal 转 {'content': ...}"""
+        btn = {'text': 'btn', 'modal': '确认操作？'}
+        result = build_keyboard([[btn]])
+        assert result['content']['rows'][0]['buttons'][0]['action']['modal'] == {'content': '确认操作？'}
+
+    def test_modal_dict(self):
+        """dict modal 原样透传"""
+        modal = {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'}
+        btn = {'text': 'btn', 'modal': modal}
+        result = build_keyboard([[btn]])
+        assert result['content']['rows'][0]['buttons'][0]['action']['modal'] == modal
+
+    def test_no_modal(self):
+        btn = {'text': 'btn'}
+        result = build_keyboard([[btn]])
+        assert 'modal' not in result['content']['rows'][0]['buttons'][0]['action']
+
+    def test_subscribe_custom_template_id(self):
+        """含 '_' 的 ID 转为 custom_template_id, 且自动设 type=4"""
+        btn = {'text': '订阅', 'subscribe': '102722993_1769091467'}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert action['type'] == 4
+        assert action['subscribe_data'] == {'template_ids': [{'custom_template_id': '102722993_1769091467'}]}
+
+    def test_subscribe_official_template_id(self):
+        """不含 '_' 的 ID 转为 template_id"""
+        btn = {'text': '订阅', 'subscribe': '12345'}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert action['type'] == 4
+        assert action['subscribe_data'] == {'template_ids': [{'template_id': '12345'}]}
+
+    def test_subscribe_int(self):
+        """int ID 转字符串"""
+        btn = {'text': '订阅', 'subscribe': 12345}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert action['subscribe_data'] == {'template_ids': [{'template_id': '12345'}]}
+
+    def test_subscribe_list(self):
+        """列表混合官方/自定义模板"""
+        btn = {'text': '订阅', 'subscribe': ['12345', '102722993_1769091467']}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert action['subscribe_data'] == {
+            'template_ids': [
+                {'template_id': '12345'},
+                {'custom_template_id': '102722993_1769091467'},
+            ]
+        }
+
+    def test_subscribe_dict_passthrough(self):
+        """dict 原样透传"""
+        sub = {'template_ids': [{'template_id': '999'}]}
+        btn = {'text': '订阅', 'subscribe': sub}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert action['type'] == 4
+        assert action['subscribe_data'] == sub
+
+    def test_no_subscribe(self):
+        btn = {'text': 'btn'}
+        result = build_keyboard([[btn]])
+        action = result['content']['rows'][0]['buttons'][0]['action']
+        assert 'subscribe_data' not in action
+        assert action['type'] == 2
+
+
 # ==================== 综合场景测试 ====================
 
 
