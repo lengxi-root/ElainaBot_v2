@@ -176,12 +176,26 @@ async def send_subscribe_buttons(event, match):
     )
 
 
-@handler(r'^订阅消息\s+(\S+)$', name='订阅消息推送示例', desc='向指定群推送订阅消息', owner_only=True)
+@handler(r'^订阅消息$', name='订阅消息推送示例', desc='向已订阅的群推送订阅消息', owner_only=True)
 async def send_subscribe_message(event, match):
-    # 群成员点击订阅按钮 (type=4) 完成订阅后, 可随时向该群主动推送订阅消息。
-    # 推送内容为普通消息即可 (文本 / markdown / 图片均可), 无人订阅的群会推送失败。
-    ok, data, _ = await event.send_to_group(match.group(1), '🔔 这是一条订阅消息推送')
-    await event.reply('✅ 订阅消息已发送' if ok else f'❌ 发送失败: {data}')
+    # 群成员点击订阅按钮 (type=4) 完成订阅后, 框架会自动记录订阅关系 (模板ID ↔ 群, 含 subscribe_id)。
+    # 推送时必须携带 subscribe_id, 不填写将按普通主动消息推送 (占用主动消息条数)。
+    template_id = '102134274_1749040268'  # 替换为你自己的 markdown 模板 ID (与订阅按钮 subscribe 一致)
+    ls = _get_log_service(event)
+    if not ls:
+        return await event.reply('❌ 服务不可用')
+    targets = ls.subscribe_get_targets(template_id)  # [{target_id, sub_type, subscribe_id}, ...]
+    if not targets:
+        return await event.reply('📭 该模板暂无订阅的群')
+    sent = 0
+    for t in targets:
+        ok, _, _ = await event.send_to_group(
+            t['target_id'], '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
+        sent += bool(ok)
+        # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
+        if ok and t['sub_type'] == 'once':
+            await ls.subscribe_consume(template_id, t['target_id'])
+    await event.reply(f'✅ 已推送 {sent}/{len(targets)} 个订阅群')
 
 
 # ==================== 交互回调示例 ====================
