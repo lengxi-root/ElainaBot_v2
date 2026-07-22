@@ -388,10 +388,9 @@ class EventHandlerMixin:
         )
 
     async def _handle_subscribe_status(self, bot, event):
-        once_ids = cfg.get_bot_setting(event.appid, 'subscription.once_template_ids', []) or []
         try:
             await bot.log_service.subscribe_record(
-                event.subscribe_results, event.group_id or '', event.user_id or '', once_ids)
+                event.subscribe_results, event.group_id or '', event.user_id or '')
         except Exception as e:
             report_error(FRAMEWORK, '订阅记录', e, context={'appid': event.appid})
         self._log_lifecycle(

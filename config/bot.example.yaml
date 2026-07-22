@@ -43,10 +43,6 @@ bots:
       new_user_welcome: false          # 新用户首次交互欢迎
       friend_add_message: false        # 添加好友自动消息
 
-    # 订阅消息 (SUBSCRIBE_MESSAGE_STATUS 事件, 映射保存到 subscribe.db)
-    subscription:
-      once_template_ids: []            # 单次订阅模板ID列表 (事件不携带模板类型, 需在此声明; 未声明的默认为永久订阅)
-
     # 维护模式
     maintenance:
       enabled: false
