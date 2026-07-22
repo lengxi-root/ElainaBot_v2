@@ -155,7 +155,7 @@ async def send_subscribe_buttons(event, match):
     buttons = [
         [
             {'text': '订阅', 'show': '已订阅',
-             'subscribe': '102134274_1749040268',  # 替换为自己机器人的 markdown 模板 ID
+             'subscribe': '102134274_1749040268',  # 订阅模板 id (用户点击后订阅的模板)
              'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
              'tips': '请升级QQ版本'},
         ],
@@ -170,7 +170,7 @@ async def send_subscribe_buttons(event, match):
         buttons=buttons,
         msg_type=2,
         markdown={
-            'custom_template_id': '102134274_1749040268',  # 替换为你自己的 markdown 模板 ID
+            'custom_template_id': '102134274_1749040268',  # markdown 模板 id (这条消息的显示模板)
             'params': [{'key': 'text', 'values': ['🔔 订阅按钮 / 二次确认演示']}],
         },
     )
@@ -189,23 +189,34 @@ async def on_subscribe_status(event, match):
 
 @handler(r'^订阅消息\s+(\S+)$', name='订阅消息推送示例', desc='向指定群推送订阅消息', owner_only=True)
 async def send_subscribe_message(event, match):
-    # 使用订阅事件返回并已入库的 subscribe_id 票据推送。
-    # 推送时必须携带 subscribe_id, 不填写将按普通主动消息推送 (占用主动消息条数)。
-    subscribe = '102134274_1749040268'  # 替换为订阅按钮 subscribe 字段使用的 markdown 模板 ID
+    # 推送订阅消息 = 发消息时带上订阅事件返回的 subscribe_id (框架已自动存库, 这里自动取出)。
+    # 不带 subscribe_id 就会按普通主动消息推送 (占用主动消息条数)。
+    markdown_id = '102134274_1749040268'  # markdown 模板 id (订阅按钮 subscribe 字段填的那个)
     group_id = match.group(1)
     ls = _get_log_service(event)
     if not ls:
         return await event.reply('❌ 服务不可用')
-    # 从订阅表中取该群的 subscribe_id
-    targets = ls.subscribe_get_targets(subscribe)  # [{target_id, sub_type, subscribe_id}, ...]
+    # 用 markdown 模板 id 从订阅表查已订阅的群, 取出订阅事件返回的 subscribe_id
+    targets = ls.subscribe_get_targets(markdown_id)  # [{target_id, sub_type, subscribe_id}, ...]
     t = next((x for x in targets if x['target_id'] == group_id), None)
     if not t:
         return await event.reply('📭 该群未订阅此模板')
+    subscribe = t['subscribe_id']  # 订阅事件返回的 subscribe_id, 如 59923650-848d-498b-b521-b5f1fba1c46d
+
+    # 方式一: 普通文本内容 + subscribe_id
     ok, data, _ = await event.send_to_group(
-        group_id, '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
+        group_id, '🔔 这是一条订阅消息推送', subscribe_id=subscribe)
+
+    # 方式二: markdown 模板内容 + subscribe_id
+    # ok, data, _ = await event.send_to_group(
+    #     group_id, '🔔 订阅推送', msg_type=2,
+    #     markdown={'custom_template_id': markdown_id,
+    #               'params': [{'key': 'text', 'values': ['🔔 订阅推送']}]},
+    #     subscribe_id=subscribe)
+
     # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
     if ok and t['sub_type'] == 'once':
-        await ls.subscribe_consume(subscribe, group_id)
+        await ls.subscribe_consume(markdown_id, group_id)
     await event.reply('✅ 订阅消息已发送' if ok else f'❌ 发送失败: {data}')
 
 

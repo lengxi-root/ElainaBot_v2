@@ -433,7 +433,7 @@ await event.reply("📌 多功能按钮面板", buttons=buttons)
 ```python
 buttons = [[{
     'text': '订阅', 'show': '已订阅',
-    'subscribe': '102134274_1749040268',          # 替换为自己机器人的 markdown 模板 ID
+    'subscribe': '102134274_1749040268',          # 订阅模板 id (用户点击后订阅的模板)
     'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
     'tips': '请升级QQ版本',
 }]]
@@ -443,7 +443,7 @@ await event.reply(
     buttons=buttons,
     msg_type=2,
     markdown={
-        'custom_template_id': '102134274_1749040268',  # 替换为你自己的 markdown 模板 ID
+        'custom_template_id': '102134274_1749040268',  # markdown 模板 id (这条消息的显示模板)
         'params': [{'key': 'text', 'values': ['🔔 订阅推送']}],
     },
 )
@@ -460,16 +460,17 @@ await event.reply(
 推送内容为普通消息即可 (文本 / markdown / 图片均可), 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
-subscribe = '102134274_1749040268'  # 订阅按钮 subscribe 字段使用的 markdown 模板 ID
-# 查询该模板已订阅的群并取出指定群的 subscribe_id: [{target_id, sub_type, subscribe_id}, ...]
-targets = log_service.subscribe_get_targets(subscribe)
+markdown_id = '102134274_1749040268'  # markdown 模板 id (订阅按钮 subscribe 字段填的那个)
+# 用 markdown 模板 id 从订阅表查已订阅的群: [{target_id, sub_type, subscribe_id}, ...]
+targets = log_service.subscribe_get_targets(markdown_id)
 t = next((x for x in targets if x['target_id'] == group_id), None)
 if t:
+    subscribe = t['subscribe_id']  # 订阅事件返回的 subscribe_id
     ok, data, _ = await event.send_to_group(
-        group_id, '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
+        group_id, '🔔 这是一条订阅消息推送', subscribe_id=subscribe)
     # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
     if ok and t['sub_type'] == 'once':
-        await log_service.subscribe_consume(subscribe, group_id)
+        await log_service.subscribe_consume(markdown_id, group_id)
 ```
 
 > ⚠️ 订阅消息有推送限额, 不要对全部订阅群批量群发, 按需向指定群推送。
