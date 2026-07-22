@@ -176,19 +176,11 @@ async def send_subscribe_buttons(event, match):
     )
 
 
-@handler(r'^订阅消息\s+(\S+)$', name='订阅消息推送示例', desc='向指定用户推送订阅消息', owner_only=True)
+@handler(r'^订阅消息\s+(\S+)$', name='订阅消息推送示例', desc='向指定群推送订阅消息', owner_only=True)
 async def send_subscribe_message(event, match):
-    # 用户点击订阅按钮 (type=4) 完成订阅后, 可随时向其推送该模板的订阅消息。
-    # 推送用的 markdown 模板 ID 必须与订阅按钮 subscribe 字段的模板 ID 一致, 未订阅的用户会推送失败。
-    ok, data, _ = await event.send_to_user(
-        match.group(1),
-        '🔔 订阅消息推送',  # 仅用于日志记录, 实际展示内容由 markdown 模板参数决定
-        msg_type=2,
-        markdown={
-            'custom_template_id': '102134274_1749040268',  # 替换为你自己的 markdown 模板 ID (需与订阅按钮一致)
-            'params': [{'key': 'text', 'values': ['🔔 这是一条订阅消息推送']}],
-        },
-    )
+    # 群成员点击订阅按钮 (type=4) 完成订阅后, 可随时向该群主动推送订阅消息。
+    # 推送内容为普通消息即可 (文本 / markdown / 图片均可), 无人订阅的群会推送失败。
+    ok, data, _ = await event.send_to_group(match.group(1), '🔔 这是一条订阅消息推送')
     await event.reply('✅ 订阅消息已发送' if ok else f'❌ 发送失败: {data}')
 
 
