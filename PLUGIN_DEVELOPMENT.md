@@ -458,7 +458,7 @@ await event.reply(
 群成员点击订阅按钮完成订阅后, 框架会自动记录订阅关系 (模板ID ↔ 群, 含 `subscribe_id`)。推送内容为普通消息即可 (文本 / markdown / 图片均可), 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
-template_id = '102134274_1749040268'  # 与订阅按钮 subscribe 字段一致的模板 ID
+template_id = '你的AppID_模板ID'  # 订阅按钮 subscribe 字段使用的订阅模板 ID
 # 查询该模板已订阅的群: [{target_id, sub_type, subscribe_id}, ...]
 targets = log_service.subscribe_get_targets(template_id)
 for t in targets:
