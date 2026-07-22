@@ -461,9 +461,9 @@ await event.reply(
 
 ```python
 markdown_id = '102134274_1749040268'  # markdown 模板 id (订阅按钮 subscribe 字段填的那个)
-# 用 markdown 模板 id 从订阅表查已订阅的群: [{target_id, sub_type, subscribe_id}, ...]
-targets = log_service.subscribe_get_targets(markdown_id)
-t = next((x for x in targets if x['target_id'] == group_id), None)
+# 先查该群订阅了哪些模板: [{template_id, sub_type, subscribe_id}, ...]
+subs = log_service.subscribe_get_by_target(group_id)
+t = next((x for x in subs if x['template_id'] == markdown_id), None)
 if t:
     subscribe = t['subscribe_id']  # 订阅事件返回的 subscribe_id
     ok, data, _ = await event.send_to_group(

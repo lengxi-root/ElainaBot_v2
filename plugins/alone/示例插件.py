@@ -196,9 +196,9 @@ async def send_subscribe_message(event, match):
     ls = _get_log_service(event)
     if not ls:
         return await event.reply('❌ 服务不可用')
-    # 用 markdown 模板 id 从订阅表查已订阅的群, 取出订阅事件返回的 subscribe_id
-    targets = ls.subscribe_get_targets(markdown_id)  # [{target_id, sub_type, subscribe_id}, ...]
-    t = next((x for x in targets if x['target_id'] == group_id), None)
+    # 先查该群订阅了哪些模板, 再取 markdown_id 对应的 subscribe_id
+    subs = ls.subscribe_get_by_target(group_id)  # [{template_id, sub_type, subscribe_id}, ...]
+    t = next((x for x in subs if x['template_id'] == markdown_id), None)
     if not t:
         return await event.reply('📭 该群未订阅此模板')
     subscribe = t['subscribe_id']  # 订阅事件返回的 subscribe_id, 如 59923650-848d-498b-b521-b5f1fba1c46d
