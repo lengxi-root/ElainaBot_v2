@@ -151,12 +151,9 @@ async def send_small_buttons(event, match):
 @handler(r'^订阅按钮$', name='订阅按钮示例', desc='发送订阅按钮 (type=4) 与二次确认弹窗', owner_only=True)
 async def send_subscribe_buttons(event, match):
     buttons = [
-        # 订阅按钮: subscribe 填模板 ID, 自动设 type=4 并生成 subscribe_data
-        # 含 '_' 的 ID 视为自定义模板 (custom_template_id), 否则为官方模板 (template_id)
-        # ⚠️ 必须填真实存在的模板 ID, 无效模板会导致部分 QQ 客户端点击后闪退
         [
             {'text': '订阅', 'show': '已订阅',
-             'subscribe': '102722993_1769091467',
+             'subscribe': '你的AppID_模板ID',  # 替换为自己机器人的订阅模板 ID
              'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
              'tips': '请升级QQ版本'},
         ],
