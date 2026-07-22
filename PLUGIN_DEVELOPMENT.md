@@ -461,15 +461,18 @@ await event.reply(
 
 ```python
 subscribe = '你的AppID_模板ID'  # 订阅按钮 subscribe 字段使用的订阅模板 ID
-# 查询该模板已订阅的群: [{target_id, sub_type, subscribe_id}, ...]
+# 查询该模板已订阅的群并取出指定群的 subscribe_id: [{target_id, sub_type, subscribe_id}, ...]
 targets = log_service.subscribe_get_targets(subscribe)
-for t in targets:
+t = next((x for x in targets if x['target_id'] == group_id), None)
+if t:
     ok, data, _ = await event.send_to_group(
-        t['target_id'], '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
+        group_id, '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
     # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
     if ok and t['sub_type'] == 'once':
-        await log_service.subscribe_consume(subscribe, t['target_id'])
+        await log_service.subscribe_consume(subscribe, group_id)
 ```
+
+> ⚠️ 订阅消息有推送限额, 不要对全部订阅群批量群发, 按需向指定群推送。
 
 完整可运行示例见 `plugins/alone/示例插件.py` 的「订阅消息」指令 (含 `log_service` 获取方式)。
 
