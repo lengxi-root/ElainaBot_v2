@@ -433,7 +433,7 @@ await event.reply("📌 多功能按钮面板", buttons=buttons)
 ```python
 buttons = [[{
     'text': '订阅', 'show': '已订阅',
-    'subscribe': '102722993_1769091467',          # 自定义模板 ID (含 '_')
+    'subscribe': '109',                           # 平台默认订阅模板 ID; 含 '_' 的为自定义订阅模板
     'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
     'tips': '请升级QQ版本',
 }]]
@@ -460,7 +460,7 @@ await event.reply(
 推送内容为普通消息即可 (文本 / markdown / 图片均可), 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
-subscribe = '你的AppID_模板ID'  # 订阅按钮 subscribe 字段使用的订阅模板 ID
+subscribe = '109'  # 订阅按钮 subscribe 字段使用的订阅模板 ID (此处为平台默认模板)
 # 查询该模板已订阅的群并取出指定群的 subscribe_id: [{target_id, sub_type, subscribe_id}, ...]
 targets = log_service.subscribe_get_targets(subscribe)
 t = next((x for x in targets if x['target_id'] == group_id), None)
