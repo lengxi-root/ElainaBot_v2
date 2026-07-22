@@ -81,7 +81,9 @@ def main():
             break
 
     if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        # Proactor 事件循环支持 asyncio 子进程 (Playwright 启动浏览器依赖);
+        # Selector 循环在 Windows 下不支持子进程, 会抛 NotImplementedError
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
     from core.application import Application
 
