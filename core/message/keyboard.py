@@ -81,6 +81,13 @@ def build_keyboard(button_rows, appid=None, *, font_size=None, style=None):
                 b['action']['type'] = 4
                 b['action']['subscribe_data'] = _build_subscribe_data(sub)
 
+            # 平台原生 action 字段直接写在 btn 里时原样透传
+            for key in ('subscribe_data', 'click_limit', 'unsupport_tips', 'anchor'):
+                if key in btn:
+                    b['action'][key] = btn[key]
+            if 'subscribe_data' in btn and 'type' not in btn:
+                b['action']['type'] = 4
+
             buttons.append(b)
         rows.append({'buttons': buttons})
 

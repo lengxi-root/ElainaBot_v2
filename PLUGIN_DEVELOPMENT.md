@@ -385,6 +385,8 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 | `modal` | `str`/`dict` | 点击后的二次确认弹窗; 字符串等价于 `{'content': 文本}`, dict 可额外指定 `confirm_text` / `cancel_text` |
 | `subscribe` | `str`/`list`/`dict` | 订阅模板 ID, 设置后自动设为 `type=4` 并生成 `subscribe_data`; 含 `_` 的 ID 转为 `custom_template_id`, 否则为 `template_id`; dict 原样透传 |
 
+平台原生 action 字段 (`subscribe_data` / `click_limit` / `unsupport_tips` / `anchor`) 也可以直接写在按钮字典里, 原样透传到 `action`; 写了 `subscribe_data` 且未指定 `type` 时自动设为 `type=4`。
+
 #### 权限字段 (五者二选一, 优先级从上到下)
 
 | 字段 | 类型 | 说明 |

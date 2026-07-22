@@ -429,8 +429,9 @@ class TestBuildKeyboardModalSubscribe:
             {'text': '订阅', 'subscribe': ['12345', '102722993_1769091467'],
              'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'}},
             {'text': '回调', 'data': 'cb', 'type': 1, 'modal': '确认执行？'},
+            {'text': '原生', 'subscribe_data': {'template_ids': [{'template_id': '999'}]}},
         ]]
-        sub_btn, cb_btn = build_keyboard(btns)['content']['rows'][0]['buttons']
+        sub_btn, cb_btn, raw_btn = build_keyboard(btns)['content']['rows'][0]['buttons']
         assert sub_btn['action']['type'] == 4
         assert sub_btn['action']['subscribe_data'] == {
             'template_ids': [
@@ -443,6 +444,9 @@ class TestBuildKeyboardModalSubscribe:
         assert cb_btn['action']['modal'] == {'content': '确认执行？'}
         assert cb_btn['action']['type'] == 1
         assert 'subscribe_data' not in cb_btn['action']
+        # 平台原生字段直接写在 btn 里原样透传, subscribe_data 自动 type=4
+        assert raw_btn['action']['type'] == 4
+        assert raw_btn['action']['subscribe_data'] == {'template_ids': [{'template_id': '999'}]}
 
 
 # ==================== 综合场景测试 ====================
