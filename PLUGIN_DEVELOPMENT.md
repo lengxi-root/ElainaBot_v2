@@ -428,6 +428,8 @@ await event.reply("📌 多功能按钮面板", buttons=buttons)
 
 #### 订阅按钮 (type=4)
 
+订阅按钮**必须挂在 markdown 模板消息上发送**: 原生 markdown / 纯文本消息无法携带订阅按钮。框架未适配 markdown 模板, 需通过 kwargs 透传自行构建 `markdown` 字段 (见 5.1 kwargs 透传):
+
 ```python
 buttons = [[{
     'text': '订阅', 'show': '已订阅',
@@ -435,10 +437,21 @@ buttons = [[{
     'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
     'tips': '请升级QQ版本',
 }]]
-await event.reply('🔔 订阅推送', buttons=buttons)
+# content 仅用于通过非空检查/日志记录, 实际展示内容由 markdown 模板参数决定
+await event.reply(
+    '🔔 订阅推送',
+    buttons=buttons,
+    msg_type=2,
+    markdown={
+        'custom_template_id': '102134274_1749040268',  # 替换为你自己的 markdown 模板 ID
+        'params': [{'key': 'text', 'values': ['🔔 订阅推送']}],
+    },
+)
 ```
 
 > ⚠️ `subscribe` 必须传入真实存在的模板 ID: 无效模板 (如 `template_id: "0"`) 会导致部分 QQ 客户端点击按钮后闪退。
+>
+> `markdown` kwarg 会整体覆盖框架自动构建的 markdown 内容, `params` 中的 `key` / `values` 需与你在 QQ 开放平台申请的 markdown 模板参数一一对应。
 
 #### 小按钮 (键盘级字号)
 
