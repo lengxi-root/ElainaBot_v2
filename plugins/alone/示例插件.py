@@ -155,7 +155,7 @@ async def send_subscribe_buttons(event, match):
     buttons = [
         [
             {'text': '订阅', 'show': '已订阅',
-             'subscribe': '你的AppID_模板ID',  # 替换为自己机器人的订阅模板 ID
+             'subscribe': '102134274_1749040268',  # 替换为自己机器人的 markdown 模板 ID
              'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
              'tips': '请升级QQ版本'},
         ],
@@ -191,7 +191,7 @@ async def on_subscribe_status(event, match):
 async def send_subscribe_message(event, match):
     # 使用订阅事件返回并已入库的 subscribe_id 票据推送。
     # 推送时必须携带 subscribe_id, 不填写将按普通主动消息推送 (占用主动消息条数)。
-    subscribe = '你的AppID_模板ID'  # 替换为订阅按钮 subscribe 字段使用的订阅模板 ID
+    subscribe = '102134274_1749040268'  # 替换为订阅按钮 subscribe 字段使用的 markdown 模板 ID
     group_id = match.group(1)
     ls = _get_log_service(event)
     if not ls:
