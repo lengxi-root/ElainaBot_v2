@@ -180,11 +180,11 @@ async def send_subscribe_buttons(event, match):
 async def send_subscribe_message(event, match):
     # 群成员点击订阅按钮 (type=4) 完成订阅后, 框架会自动记录订阅关系 (模板ID ↔ 群, 含 subscribe_id)。
     # 推送时必须携带 subscribe_id, 不填写将按普通主动消息推送 (占用主动消息条数)。
-    template_id = '你的AppID_模板ID'  # 替换为订阅按钮 subscribe 字段使用的订阅模板 ID
+    subscribe = '你的AppID_模板ID'  # 替换为订阅按钮 subscribe 字段使用的订阅模板 ID
     ls = _get_log_service(event)
     if not ls:
         return await event.reply('❌ 服务不可用')
-    targets = ls.subscribe_get_targets(template_id)  # [{target_id, sub_type, subscribe_id}, ...]
+    targets = ls.subscribe_get_targets(subscribe)  # [{target_id, sub_type, subscribe_id}, ...]
     if not targets:
         return await event.reply('📭 该模板暂无订阅的群')
     sent = 0
@@ -194,7 +194,7 @@ async def send_subscribe_message(event, match):
         sent += bool(ok)
         # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
         if ok and t['sub_type'] == 'once':
-            await ls.subscribe_consume(template_id, t['target_id'])
+            await ls.subscribe_consume(subscribe, t['target_id'])
     await event.reply(f'✅ 已推送 {sent}/{len(targets)} 个订阅群')
 
 
