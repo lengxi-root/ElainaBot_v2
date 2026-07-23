@@ -6,6 +6,9 @@ from datetime import datetime
 SUB_TYPE_ONCE = 'once'
 SUB_TYPE_PERMANENT = 'permanent'
 
+OP_SUBSCRIBE = 1  # 开启订阅
+OP_UNSUBSCRIBE = 2  # 关闭订阅
+
 _UPSERT_SQL = (
     'INSERT INTO log (template_id, target_id, target_type, sub_type, subscribe_id, '
     'status, subscribe_ts, update_ts, updated_at) VALUES (?,?,?,?,?,?,?,?,?) '
@@ -31,6 +34,7 @@ class SubscribeMixin:
         - 群聊链路: group_id 非空, target_type='group'
         - 单聊链路: 仅 user_id, target_type='user'
         - sub_type: 模板 ID 在 once_template_ids 中为单次订阅, 否则为永久订阅
+        - result 项的 op: 1=开启订阅 (status=1), 2=关闭订阅 (status=0)
         """
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
@@ -57,7 +61,7 @@ class SubscribeMixin:
                 target_type,
                 sub_type,
                 str(item.get('subscribe_id') or ''),
-                int(item.get('op') or 0),
+                1 if int(item.get('op') or 0) == OP_SUBSCRIBE else 0,
                 int(item.get('subscribe_ts') or 0),
                 int(item.get('update_ts') or 0),
                 now,
