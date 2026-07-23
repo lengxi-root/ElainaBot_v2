@@ -187,8 +187,8 @@ _INDEXES = {
         'CREATE INDEX IF NOT EXISTS idx_msg_user_id ON log(user_id)',
         'CREATE INDEX IF NOT EXISTS idx_msg_group_agg ON log(group_id, id, timestamp)',
         'CREATE INDEX IF NOT EXISTS idx_msg_user_agg ON log(user_id, id, timestamp)',
-        # 私聊列表聚合覆盖索引 (user_id + group_id 过滤, 不含 content 大字段)
-        'CREATE INDEX IF NOT EXISTS idx_msg_user_chat_agg ON log(user_id, group_id, id, timestamp)',
+        # 私聊列表聚合覆盖索引 (group_id 等值 + user_id 范围可直接索引定位)
+        'CREATE INDEX IF NOT EXISTS idx_msg_user_chat_agg ON log(group_id, user_id, id, timestamp)',
         'CREATE INDEX IF NOT EXISTS idx_msg_message_id ON log(message_id)',
         'CREATE INDEX IF NOT EXISTS idx_msg_timestamp ON log(timestamp)',
         'CREATE INDEX IF NOT EXISTS idx_msg_reference_id ON log(reference_id)',
