@@ -59,7 +59,6 @@ async def upload_media_bytes(sender, file_bytes, file_type, endpoint, *, file_na
         if not success:
             if event:
                 event.error = resp
-                log.debug(f'[{sender._appid}] 上传API失败: {resp} (endpoint={endpoint})')
             else:
                 log.warning(f'[{sender._appid}] 上传API失败: {resp} (endpoint={endpoint})')
             return None
@@ -71,7 +70,6 @@ async def upload_media_bytes(sender, file_bytes, file_type, endpoint, *, file_na
             await asyncio.sleep(0.15)
     if event:
         event.error = last_resp
-        log.debug(f'[{sender._appid}] 上传失败: 无 file_info (endpoint={endpoint}, resp={last_resp})')
     else:
         log.warning(f'[{sender._appid}] 上传失败: 无 file_info (endpoint={endpoint}, resp={last_resp})')
     return None
