@@ -5,6 +5,7 @@ import contextlib
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date
 from datetime import timedelta
 from typing import Any, cast
@@ -32,9 +33,11 @@ from web.tools._message.shared import (
     _get_nickname,
 )
 
-_chat_list_cache: dict[tuple[str, str, int], tuple[float, list[dict[str, Any]]]] = {}
+_chat_list_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
 _CHAT_LIST_TTL = 10
-_chat_list_lock = None  # asyncio.Lock, 延迟初始化
+_chat_list_lock = None  # asyncio.Lock, 延迟初始化 (仅首次无缓存时使用)
+_chat_refreshing: set[tuple[str, str]] = set()  # 后台刷新中的 cache_key, 防重复刷新
+_chat_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='chat-agg')
 
 
 def _lookup_reference_id(bot, chat_type, chat_id, message_id):
@@ -81,8 +84,56 @@ async def handle_get_nicknames_batch(request: web.Request):
     return web.json_response({'success': True, 'data': {'nicknames': result}})
 
 
+async def _build_chat_list(chat_type, appid_filter):
+    """构建聊天列表 (阻塞聚合在专用线程池执行)"""
+    loop = asyncio.get_event_loop()
+    if chat_type in ('full_access', 'remark'):
+        # 全量群/备注群直接从 data.db 获取
+        fa_ids = _get_full_access_group_ids()
+        bot = next(iter(_shared._bot_manager._bots.values()), None) if _shared._bot_manager else None
+        appid_default = next(iter(_shared._bot_manager._bots), '') if _shared._bot_manager and _shared._bot_manager._bots else ''
+        remarks = _load_remarks()
+        source_ids = set(remarks.keys()) if chat_type == 'remark' else fa_ids
+        return [{
+            'chat_id': gid,
+            'appid': appid_filter or appid_default,
+            'bot_name': getattr(bot, 'name', appid_default) if bot else '',
+            'nickname': _remark_name(remarks.get(gid)) or f'群{gid[-6:]}',
+            'remark': _remark_name(remarks.get(gid)),
+            'group_qq': _remark_qq(remarks.get(gid)),
+            'is_full_access': gid in fa_ids,
+        } for gid in source_ids]
+    chats = await loop.run_in_executor(_chat_executor, _aggregate_chats_sync, chat_type, appid_filter)
+    if chat_type == 'user':
+        ids = [c['chat_id'] for c in chats]
+        nicks = await loop.run_in_executor(_chat_executor, _batch_get_nicknames, ids)
+        for c in chats:
+            c['nickname'] = nicks.get(c['chat_id'], f'用户{c["chat_id"][-6:]}')
+    else:
+        fa_ids = _get_full_access_group_ids()
+        remarks = _load_remarks()
+        for c in chats:
+            r_val = remarks.get(c['chat_id'])
+            c['nickname'] = _remark_name(r_val) or f'群{c["chat_id"][-6:]}'
+            c['remark'] = _remark_name(r_val)
+            c['group_qq'] = _remark_qq(r_val)
+            c['is_full_access'] = c['chat_id'] in fa_ids
+    return chats
+
+
+async def _refresh_chat_list(cache_key, chat_type, appid_filter):
+    """后台刷新聊天列表缓存"""
+    try:
+        chats = await _build_chat_list(chat_type, appid_filter)
+        _chat_list_cache[cache_key] = (time.time(), chats)
+    except Exception:
+        pass
+    finally:
+        _chat_refreshing.discard(cache_key)
+
+
 async def handle_get_chats(request: web.Request):
-    """获取聊天列表 — SQL GROUP BY 聚合 + 批量昵称 + 短期缓存"""
+    """获取聊天列表 — SQL GROUP BY 聚合 + 批量昵称 + 缓存 (过期先返旧数据, 后台刷新)"""
     try:
         body = await request.json()
     except Exception:
@@ -98,49 +149,21 @@ async def handle_get_chats(request: web.Request):
         _chat_list_lock = asyncio.Lock()
 
     cache_key = (chat_type, appid_filter)
-    now = time.time()
     cached = _chat_list_cache.get(cache_key)
-    if cached and now - cached[0] < _CHAT_LIST_TTL:
+    if cached:
+        # 命中缓存 (即使过期) 立即返回, 过期时后台刷新, 避免请求在锁后排队超时
         chats = cached[1]
+        if time.time() - cached[0] >= _CHAT_LIST_TTL and cache_key not in _chat_refreshing:
+            _chat_refreshing.add(cache_key)
+            asyncio.get_event_loop().create_task(_refresh_chat_list(cache_key, chat_type, appid_filter))
     else:
+        # 首次无缓存, 同类请求合并等待一次构建
         async with _chat_list_lock:
             cached = _chat_list_cache.get(cache_key)
-            if cached and time.time() - cached[0] < _CHAT_LIST_TTL:
+            if cached:
                 chats = cached[1]
             else:
-                loop = asyncio.get_event_loop()
-                if chat_type in ('full_access', 'remark'):
-                    # 全量群/备注群直接从 data.db 获取
-                    fa_ids = _get_full_access_group_ids()
-                    bot = next(iter(_shared._bot_manager._bots.values()), None) if _shared._bot_manager else None
-                    appid_default = next(iter(_shared._bot_manager._bots), '') if _shared._bot_manager and _shared._bot_manager._bots else ''
-                    remarks = _load_remarks()
-                    source_ids = set(remarks.keys()) if chat_type == 'remark' else fa_ids
-                    chats = [{
-                        'chat_id': gid,
-                        'appid': appid_filter or appid_default,
-                        'bot_name': getattr(bot, 'name', appid_default) if bot else '',
-                        'nickname': _remark_name(remarks.get(gid)) or f'群{gid[-6:]}',
-                        'remark': _remark_name(remarks.get(gid)),
-                        'group_qq': _remark_qq(remarks.get(gid)),
-                        'is_full_access': gid in fa_ids,
-                    } for gid in source_ids]
-                else:
-                    chats = await loop.run_in_executor(None, _aggregate_chats_sync, chat_type, appid_filter)
-                    if chat_type == 'user':
-                        ids = [c['chat_id'] for c in chats]
-                        nicks = await loop.run_in_executor(None, _batch_get_nicknames, ids)
-                        for c in chats:
-                            c['nickname'] = nicks.get(c['chat_id'], f'用户{c["chat_id"][-6:]}')
-                    else:
-                        fa_ids = _get_full_access_group_ids()
-                        remarks = _load_remarks()
-                        for c in chats:
-                            r_val = remarks.get(c['chat_id'])
-                            c['nickname'] = _remark_name(r_val) or f'群{c["chat_id"][-6:]}'
-                            c['remark'] = _remark_name(r_val)
-                            c['group_qq'] = _remark_qq(r_val)
-                            c['is_full_access'] = c['chat_id'] in fa_ids
+                chats = await _build_chat_list(chat_type, appid_filter)
                 _chat_list_cache[cache_key] = (time.time(), chats)
 
     if search:
