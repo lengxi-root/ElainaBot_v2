@@ -7,11 +7,14 @@ import time
 from datetime import datetime, timedelta
 
 from core.base.config import cfg
+from core.base.logger import PLUGIN, get_logger
 from core.plugin.decorators import handler
 from core.storage.lifecycle_stats import compute_lifecycle_counts
 
 from ._dau_image import render_dau_image
 from ._reply import reply
+
+log = get_logger(PLUGIN, '系统管理')
 
 
 def _get_bot(event):
@@ -51,7 +54,8 @@ async def _upload_dau_image(bot, image_bytes):
             continue
         try:
             result = await fn()
-        except Exception:
+        except Exception as e:
+            log.debug(f'图床 {name} 上传失败: {e}')
             continue
         if isinstance(result, str) and result.startswith('http'):
             return result

@@ -48,7 +48,7 @@ def _scan_modules():
         try:
             with open(enabled_file, encoding='utf-8') as f:
                 persist_map = json.load(f) or {}
-        except Exception:
+        except (OSError, ValueError):
             pass
 
     for name in sorted(os.listdir(mdir)):

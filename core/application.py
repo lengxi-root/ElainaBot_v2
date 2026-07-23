@@ -136,7 +136,7 @@ class Application(EventHandlerMixin):
             from core.bot import manager as _bot_manager_module
 
             _bot_manager_module._bot_manager_ref = self
-        except Exception:
+        except ImportError:
             pass
 
         # 1) 初始化配置

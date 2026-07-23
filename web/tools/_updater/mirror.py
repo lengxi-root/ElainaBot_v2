@@ -91,7 +91,7 @@ def detect_environment():
             with open('/proc/1/cgroup') as f:
                 if 'docker' in f.read() or 'containerd' in f.read():
                     info['docker'] = True
-        except Exception:
+        except OSError:
             pass
     # 可写性检测
     try:

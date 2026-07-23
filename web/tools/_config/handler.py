@@ -2,6 +2,7 @@
 
 import base64
 import contextlib
+import logging
 import os
 import re
 import secrets
@@ -14,6 +15,8 @@ from aiohttp import web
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from web.response import error, ok
+
+log = logging.getLogger('ElainaBot.web.config')
 
 _base_dir = ''
 
@@ -243,8 +246,8 @@ async def handle_save_config(request: web.Request):
                     new_data = yaml.safe_load(content)
                     if isinstance(new_data, dict):
                         content = _merge_preserving_comments(original_text, new_data)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f'templates 注释保留合并失败: {e}')
 
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content)

@@ -264,7 +264,7 @@ class OneBotWSServer:
                     self._log.warning(f'反向 WS 断开: {url}, appid={appid}, 当前 {len(self._clients)} 个)')
             except asyncio.CancelledError:
                 self._reverse_status[name] = {'connected': False, 'error': '已停止'}
-                return
+                raise
             except Exception as e:
                 self._reverse_status[name] = {'connected': False, 'error': str(e)}
                 self._log.warning(f'反向 WS 连接失败 [{url}], appid={appid}: {e}')

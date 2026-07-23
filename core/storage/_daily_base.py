@@ -29,7 +29,7 @@ class DailyScanService:
         self._running = False
         if self._task:
             self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
 
@@ -47,7 +47,7 @@ class DailyScanService:
                     break
                 await self._run_scheduled()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 self._logger.warning(f'调度异常: {e}')
                 await asyncio.sleep(60)

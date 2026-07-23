@@ -46,7 +46,7 @@ def _save_data():
         os.makedirs(os.path.dirname(_data_file), exist_ok=True)
         with open(_data_file, 'w', encoding='utf-8') as f:
             json.dump(_openapi_user_data, f, indent=2, ensure_ascii=False)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass
 
 
@@ -72,7 +72,7 @@ def _save_v2(user_id):
         path = os.path.join(_v2_dir, f'{user_id}.json')
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(_openapi_v2_data.get(user_id, {}), f, indent=2, ensure_ascii=False)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass
 
 
@@ -82,7 +82,7 @@ def _remove_v2(user_id):
         path = os.path.join(_v2_dir, f'{user_id}.json')
         if os.path.exists(path):
             os.remove(path)
-    except Exception:
+    except OSError:
         pass
 
 

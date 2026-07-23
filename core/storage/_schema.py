@@ -3,6 +3,7 @@
 import contextlib
 import json
 import re
+import sqlite3
 
 from core.base.logger import SERVICE, get_logger
 from core.message.response import raw_response_text
@@ -227,7 +228,7 @@ def _migrate_data_tables(conn):
     try:
         if conn.execute('PRAGMA user_version').fetchone()[0] >= _DATA_SCHEMA_VERSION:
             return
-    except Exception:
+    except sqlite3.Error:
         pass
     for table, col, col_def in _DATA_MIGRATIONS:
         try:

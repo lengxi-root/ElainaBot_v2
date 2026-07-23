@@ -42,7 +42,7 @@ def _load_market_mirror():
         if os.path.isfile(p):
             with open(p, encoding='utf-8') as f:
                 return json.load(f).get('mirror', '')
-    except Exception:
+    except (OSError, ValueError):
         pass
     return ''
 
@@ -53,7 +53,7 @@ def _save_market_mirror(mirror):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, 'w', encoding='utf-8') as f:
             json.dump({'mirror': mirror}, f)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass
 
 

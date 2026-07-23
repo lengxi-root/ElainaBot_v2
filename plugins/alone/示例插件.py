@@ -154,7 +154,7 @@ async def send_subscribe_buttons(event, match):
     buttons = [
         [
             {'text': '订阅', 'show': '已订阅',
-             'subscribe': '102134274_1749040268',  # 替换机器人Markdown模板 id 
+             'subscribe': '102134274_1749040268',  # 替换机器人Markdown模板 id
              'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
              'tips': '请升级QQ版本'},
         ],

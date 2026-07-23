@@ -297,7 +297,7 @@ class _BaseLogService:
             except TimeoutError:
                 pass
             except asyncio.CancelledError:
-                break
+                raise
             await self._flush_all()
             if self._wal and time.monotonic() - self._last_checkpoint >= 300:
                 self._last_checkpoint = time.monotonic()
@@ -374,7 +374,7 @@ class _BaseLogService:
                 await self._cleanup_expired()
                 self._close_stale_conns()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 log.warning(f'[{self._log_tag}] 清理异常: {e}')
                 await asyncio.sleep(3600)

@@ -62,9 +62,9 @@ class _WatcherMixin:
                         except Exception as e:
                             report_error(PLUGIN, name, e)
             except asyncio.CancelledError:
-                break
-            except Exception:
-                pass
+                raise
+            except Exception as e:
+                log.debug(f'插件监视异常: {e}')
 
     def start_watcher(self):
         if self._watcher_task and not self._watcher_task.done():

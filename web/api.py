@@ -348,8 +348,8 @@ def _query_bot_logs(log_type, appid_filter, post_fn=None):
                 if post_fn:
                     post_fn(r)
             results.extend(rows)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'查询机器人 {appid} 日志失败: {e}')
     # id 是 AUTOINCREMENT, 按 (appid, id) 视为时间顺序, 取最新 50 条
     results.sort(key=lambda r: r.get('id', 0))
     return results[-50:]

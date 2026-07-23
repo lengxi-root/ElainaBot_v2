@@ -86,7 +86,7 @@ def _save_mirror_cache(mirrors):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             json.dump({'mirrors': mirrors}, f)
-    except Exception:
+    except (OSError, TypeError, ValueError):
         pass
 
 
@@ -108,7 +108,7 @@ def clear_mirror_cache():
         path = _mirror_cache_path()
         if os.path.isfile(path):
             os.remove(path)
-    except Exception:
+    except OSError:
         pass
 
 

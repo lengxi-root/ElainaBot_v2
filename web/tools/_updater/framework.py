@@ -58,8 +58,8 @@ class FrameworkUpdater:
             cfg = self._load_setting('skip_files', None)
             if cfg:
                 return cfg
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'读取 skip_files 配置失败: {e}')
         return list(DEFAULT_SKIP)
 
     def _load_version(self):
@@ -83,7 +83,7 @@ class FrameworkUpdater:
                     ensure_ascii=False,
                 )
             self.current_version = version
-        except Exception:
+        except (OSError, TypeError, ValueError):
             pass
 
     def _load_setting(self, key, default):
@@ -102,7 +102,7 @@ class FrameworkUpdater:
             data[key] = value
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception:
+        except (OSError, TypeError, ValueError):
             pass
 
     def get_version_info(self):
@@ -457,7 +457,7 @@ class FrameworkUpdater:
                 if app._stop_event:
                     app._stop_event.set()
                 return
-        except Exception:
+        except ImportError:
             pass
         log.warning('无法自动重启, 请手动重启')
 

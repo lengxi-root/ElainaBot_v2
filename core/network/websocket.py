@@ -95,7 +95,7 @@ class WSClient:
                     self._reconnect_count = 0
                     await self._handle_connection()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 if self._closed:
                     break
@@ -234,8 +234,9 @@ class WSClient:
                 if self._ws and not self._closed:
                     await self._ws.send(json.dumps({'op': _OP_HEARTBEAT, 'd': self._seq}))
             except asyncio.CancelledError:
-                break
-            except Exception:
+                raise
+            except Exception as e:
+                log.debug(f'[{self._appid}] 心跳发送失败, 退出心跳循环: {e}')
                 break
 
     async def _get_gateway_url(self):
