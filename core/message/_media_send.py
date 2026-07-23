@@ -63,7 +63,7 @@ class _MediaSendMixin:
         target_user_id=None,
         target_group_id=None,
         msg_id=None,
-        max_try: int = 3,
+        max_try: int = 1,
     ):
         upload_ep = _resolve_upload_ep(target_group_id, target_user_id, event)
         if not upload_ep:
@@ -89,7 +89,7 @@ class _MediaSendMixin:
                 if file_info:
                     break
             if not file_info:
-                log.debug(f'[{self._appid}] URL直传失败, 回退下载上传: {data}')
+                log.warning(f'[{self._appid}] URL直传失败, 尝试本地发送: {data}')
                 data = await self.download_media(data)
 
         if not file_info and not isinstance(data, bytes):
