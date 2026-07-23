@@ -150,8 +150,7 @@ async def send_small_buttons(event, match):
 
 @handler(r'^订阅按钮$', name='订阅按钮示例', desc='发送订阅按钮 (type=4) 与二次确认弹窗', owner_only=True)
 async def send_subscribe_buttons(event, match):
-    # ⚠️ 订阅按钮必须挂在 markdown 模板消息上发送, 原生 markdown / 纯文本消息无法携带订阅按钮。
-    # 框架未适配 markdown 模板, 需通过 kwargs 透传自行构建 markdown 字段。
+    # 订阅按钮需挂在 markdown 消息上发送, 用原生 markdown (msg_type=2) 即可。
     buttons = [
         [
             {'text': '订阅', 'show': '已订阅',
@@ -160,15 +159,7 @@ async def send_subscribe_buttons(event, match):
              'tips': '请升级QQ版本'},
         ],
     ]
-    await event.reply(
-        "🔔 订阅按钮 / 二次确认演示",
-        buttons=buttons,
-        msg_type=2,
-        markdown={
-            'custom_template_id': '102134274_1749040268',  # markdown 模板 id (这条消息的显示模板)
-            'params': [{'key': 'text', 'values': ['🔔 订阅按钮 / 二次确认演示']}],
-        },
-    )
+    await event.reply("🔔 订阅按钮 / 二次确认演示", buttons=buttons, msg_type=2)
 
 
 # 用户点击订阅按钮后, 平台下发 SUBSCRIBE_MESSAGE_STATUS 订阅事件, 事件中返回 subscribe_id
