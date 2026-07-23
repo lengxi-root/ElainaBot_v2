@@ -2,9 +2,12 @@
 
 import asyncio
 import json
+import logging
 
 from core.base.logger import FRAMEWORK, report_error, report_error_raw
 from core.message.response import extract_message_id, extract_reference_id
+
+log = logging.getLogger('ElainaBot.web.message')
 
 
 def _build_display(msg_type, content, image_data, media_file_type, ark_template_id, media_label=''):
@@ -49,8 +52,8 @@ def _log_sent_message(bot, chat_type, chat_id, display, bot_appid, bot_name, bot
                     },
                 )
             )
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'写消息日志失败: {e}')
 
     # 推送到面板实时日志
     try:
@@ -74,8 +77,8 @@ def _log_sent_message(bot, chat_type, chat_id, display, bot_appid, bot_name, bot
                 'plugin_name': 'WebPanel',
             },
         )
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'面板日志推送失败: {e}')
 
 
 def _log_send_error(bot, msg_type, chat_type, chat_id, send_payload, api_resp, bot_appid, msg_id=''):

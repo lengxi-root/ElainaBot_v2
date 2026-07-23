@@ -79,7 +79,7 @@ def init():
     try:
         with open(_hourly_path(), encoding='utf-8') as f:
             _hourly_cache.update(json.load(f))
-    except Exception:
+    except (OSError, ValueError):
         pass
     with contextlib.suppress(Exception):
         _snapshot_completed_hours()

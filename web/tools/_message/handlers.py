@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -32,6 +33,8 @@ from web.tools._message.shared import (
     _get_full_access_group_ids,
     _get_nickname,
 )
+
+log = logging.getLogger('ElainaBot.web.message')
 
 _chat_list_cache: dict[tuple[str, str], tuple[float, list[dict[str, Any]]]] = {}
 _CHAT_LIST_TTL = 10
@@ -126,8 +129,8 @@ async def _refresh_chat_list(cache_key, chat_type, appid_filter):
     try:
         chats = await _build_chat_list(chat_type, appid_filter)
         _chat_list_cache[cache_key] = (time.time(), chats)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'聊天列表缓存刷新失败: {e}')
     finally:
         _chat_refreshing.discard(cache_key)
 
@@ -528,8 +531,8 @@ def _mark_recalled(bot, message_id):
                 with lock:
                     conn.execute(sql, (message_id,))
                     conn.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'标记撤回失败 {d}: {e}')
 
 
 # ==================== 群备注 (带内存缓存) ====================
@@ -665,8 +668,8 @@ def _get_group_members_sync(group_id):
                     if info:
                         members[uid] = info
                 break
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'获取群成员角色失败: {e}')
     _roles_cache[group_id] = (now, members)
     return members
 

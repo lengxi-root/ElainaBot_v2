@@ -66,7 +66,7 @@ async def handle_restart(request: web.Request):
             if app._stop_event:
                 app._stop_event.set()
             return web.json_response({'success': True, 'message': '正在重启...'})
-    except Exception:
+    except ImportError:
         pass
 
     # 兜底: 用外部脚本重启

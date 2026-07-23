@@ -146,8 +146,8 @@ def _preview_zip(content):
                 try:
                     fc = zf.read(pf).decode('utf-8', errors='replace')
                     files.append({'name': pf, 'content': fc[:5000], 'size': len(fc)})
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f'读取预览文件 {pf} 失败: {e}')
             return web.json_response(
                 {
                     'success': True,
@@ -524,8 +524,8 @@ async def _unload_plugin_runtime(plugin_name):
         app = get_app()
         if app and app.plugin_manager:
             await app.plugin_manager.unload(plugin_name)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'卸载插件 {plugin_name} 失败: {e}')
 
 
 async def handle_market_uninstall(request: web.Request):

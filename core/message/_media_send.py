@@ -192,8 +192,8 @@ class _MediaSendMixin:
         try:
             await asyncio.sleep(delay)
             await self.recall(event, message_id)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'自动撤回失败: {e}')
 
 
 # ==================== 模块级辅助 ====================

@@ -126,7 +126,7 @@ async def restart_bot(event, match):
             if app._stop_event:
                 app._stop_event.set()
             return
-    except Exception:
+    except ImportError:
         pass
     # 兜底: Application 不可用时直接重启
     python = sys.executable
@@ -230,8 +230,8 @@ async def add_blacklist(event, match):
         owner_ids = bot_cfg.get('owner_ids', []) if bot_cfg else []
         if user_id in owner_ids:
             return await reply(event, '无法将主人添加到黑名单')
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'读取主人配置失败: {e}')
 
     bl = get_blacklist_map(event.appid, 'user')
     if user_id in bl:

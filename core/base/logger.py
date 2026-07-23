@@ -46,7 +46,7 @@ def _get_app_callbacks():
         app = get_app()
         if app:
             return app._error_callbacks, app._framework_callbacks
-    except Exception:
+    except ImportError:
         pass
     return [], []
 

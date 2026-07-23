@@ -1,12 +1,15 @@
 """统计数据同步聚合 (executor 中调用)"""
 
 import contextlib
+import logging
 from datetime import datetime, timedelta
 
 from core.storage.lifecycle_stats import compute_lifecycle_counts
 from web.tools._bots import iter_bots
 from web.tools._stats import context
 from web.tools._stats.hourly import _aggregate_hourly
+
+log = logging.getLogger('ElainaBot.web.stats')
 
 
 def _count_lifecycle_today(appid_filter, date_str):
@@ -35,8 +38,8 @@ def _count_table(appid_filter, table):
             r = inst.log_service.query_data(f'SELECT COUNT(*) as c FROM {table}')
             if r:
                 total += r[0].get('c', 0)
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'统计表 {table} 行数失败: {e}')
     return total
 
 
@@ -122,8 +125,8 @@ def _gather_chart_sync(days, appid_filter):
                     if rows:
                         day_received += rows[0].get('received', 0)
                         day_sent += rows[0].get('sent', 0)
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f'统计收发消息失败 {date_str}: {e}')
             if not is_today:
                 # 历史: 从 dau.db
                 try:
@@ -140,8 +143,8 @@ def _gather_chart_sync(days, appid_filter):
                         day_sent += dd.get('sent_messages', 0) or 0
                         day_users.update(range(dd.get('active_users', 0)))
                         day_groups.update(range(dd.get('active_groups', 0)))
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f'统计 DAU 失败 {date_str}: {e}')
 
         if is_today:
             # 今日事件: 从 lifecycle.db 实时统计

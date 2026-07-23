@@ -153,8 +153,8 @@ async def handle_verify_saved_login(request: web.Request):
                 },
                 message='登录状态有效',
             )
-    except Exception:
-        pass
+    except Exception as e:
+        h.log.debug(f'校验保存的登录状态失败: {e}')
     h._openapi_user_data.pop(user_id, None)
     h._save_data()
     return h._ok(valid=False, message='登录状态已失效')

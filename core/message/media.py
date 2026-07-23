@@ -270,6 +270,6 @@ async def get_image_size(client, image_input):
         if isinstance(image_input, bytes):
             with Image.open(io.BytesIO(image_input)) as img:
                 return _img_size(img)
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'获取图片尺寸失败: {e}')
     return None

@@ -1,10 +1,13 @@
 """消息管理 — SQL 查询 (聊天列表聚合, 历史消息)"""
 
+import logging
 from datetime import date as _date
 from datetime import timedelta
 
 import web.tools._message.shared as _shared
 from web.tools._bots import iter_bots
+
+log = logging.getLogger('ElainaBot.web.message')
 
 _MSG_COLS = 'id, timestamp, message_id, reference_id, user_id, group_id, content, raw_message, plugin_name, direction'
 
@@ -40,8 +43,8 @@ def _query_chat_messages_sync(chat_type, chat_id, appid_filter, days=3, limit=30
                     r['bot_qq'] = bot_qq
                     r['_date'] = d
                 results.extend(rows)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f'查询消息失败 {appid} {d}: {e}')
             # 今天已经够了就不查更早的日期
             if len(results) >= limit:
                 break
@@ -82,8 +85,8 @@ def _query_older_messages_sync(chat_type, chat_id, appid_filter, before_date_str
                     r['bot_qq'] = bot_qq
                     r['_date'] = d
                 results.extend(rows)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f'查询历史消息失败 {appid} {d}: {e}')
         if results:
             results.sort(key=lambda r: r.get('id', 0))
             return results[-limit:], d, True
@@ -105,8 +108,8 @@ def _query_lifecycle_events_sync(chat_type, chat_id, appid_filter, dates, limit=
                     r['appid'] = appid
                     r['_date'] = d
                 results.extend(rows)
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f'查询生命周期事件失败 {appid} {d}: {e}')
     results.sort(key=lambda r: (r.get('_date', ''), r.get('id', 0)))
     return results[-limit:]
 
@@ -175,7 +178,8 @@ def _aggregate_chats_sync(chat_type, appid_filter):
                         item['last_id'] = last_id
                         item['last_time'] = last_time
                         item['last_date'] = d
-            except Exception:
+            except Exception as e:
+                log.debug(f'聊天列表聚合失败 {appid} {d}: {e}')
                 continue
     if not merged:
         return []
@@ -190,8 +194,8 @@ def _aggregate_chats_sync(chat_type, appid_filter):
         try:
             rows = inst.log_service.query('message', count_sql, cp, date=item['last_date'])
             item['msg_count'] = (rows[0].get('n', 0) or 0) if rows else 0
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'统计消息数失败: {e}')
     by_path = {}
     for item in top:
         if item['last_id']:
@@ -213,8 +217,8 @@ def _aggregate_chats_sync(chat_type, appid_filter):
                 )
                 for r in rows:
                     id_to_content[(appid, r.get('id'))] = r.get('content', '')
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f'查询消息内容失败: {e}')
     for item in top:
         item['last_content'] = id_to_content.get((item['appid'], item['last_id']), '')
     return chats

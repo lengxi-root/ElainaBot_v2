@@ -22,7 +22,7 @@ def _disable_sendfile_on_windows():
         import aiohttp.web_fileresponse as _fr
 
         _fr.NOSENDFILE = True
-    except Exception:
+    except (ImportError, AttributeError):
         pass
 
 
@@ -54,6 +54,7 @@ class _WebPanelLogHandler(logging.Handler):
             if shared:
                 shared.add_sync('framework', entry)
         except Exception:
+            # 日志处理器内部异常不外抛也不再记日志, 避免递归
             pass
 
 
@@ -119,8 +120,8 @@ def setup_web(app: web.Application, bot_manager, base_dir: str):
         _handler = _WebPanelLogHandler(_ws)
         _handler.setLevel(logging.INFO)
         logging.getLogger('ElainaBot').addHandler(_handler)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('ElainaBot.web').debug(f'面板日志推送安装失败: {e}')
     app.router.add_routes(_panel_api.get_routes())
 
     # 媒体文件静态路由 (data/media/)

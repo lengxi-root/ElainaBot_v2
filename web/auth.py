@@ -84,7 +84,7 @@ def _read_json(path, default=None):
         if os.path.exists(path):
             with open(path, encoding='utf-8') as f:
                 return json.load(f)
-    except Exception:
+    except (OSError, ValueError):
         pass
     return default or {}
 
@@ -95,7 +95,7 @@ def _write_text_sync(path, text):
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(text)
-        except Exception:
+        except OSError:
             pass
 
 
@@ -219,7 +219,7 @@ def cleanup_expired_ip_bans():
                     d['is_banned'] = False
                     d['ban_time'] = None
                     d['fail_times'] = []
-            except Exception:
+            except (TypeError, ValueError):
                 pass
     # 超限时淘汰最旧的无封禁记录
     if len(ip_access_data) > _MAX_IP_RECORDS:
@@ -250,7 +250,7 @@ def _load_session_data():
             info['expires'] = datetime.fromisoformat(info['expires'])
             if now < info['expires']:
                 valid_sessions[token] = info
-        except Exception:
+        except (KeyError, TypeError, ValueError):
             pass
 
 

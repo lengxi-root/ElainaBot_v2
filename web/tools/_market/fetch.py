@@ -1,6 +1,7 @@
 """插件市场 — GitHub 下载, 镜像排名"""
 
 import json
+import logging
 import time
 
 import aiohttp as _aiohttp
@@ -9,6 +10,8 @@ from web.tools._market.shared import (
     PLUGIN_REPO,
     _ranked_mirror_urls,
 )
+
+log = logging.getLogger('ElainaBot.web.market')
 
 _plugin_cache = None  # 缓存的插件列表
 _plugin_cache_ts = 0
@@ -24,7 +27,8 @@ async def _try_fetch_json(session, urls, headers, timeout):
                     body = await resp.read()
                     if body[:1] in (b'[', b'{'):
                         return json.loads(body)
-        except Exception:
+        except Exception as e:
+            log.debug(f'镜像请求失败 {url}: {e}')
             continue
     return None
 
@@ -79,8 +83,8 @@ async def _fetch_once(session, url, timeout):
         ) as resp:
             if resp.status == 200:
                 return await resp.read()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'下载失败 {url}: {e}')
     return None
 
 

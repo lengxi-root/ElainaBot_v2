@@ -1,7 +1,10 @@
 """消息管理 — 全局状态, 昵称缓存"""
 
+import logging
 import time
 from typing import Any
+
+log = logging.getLogger('ElainaBot.web.message')
 
 _nickname_cache: dict[str, tuple[float, str]] = {}
 _CACHE_TIMEOUT = 86400
@@ -30,8 +33,8 @@ def _get_nickname(user_id):
                     name = r[0]['name']
                     _nickname_cache[user_id] = {'name': name, 'ts': time.time()}
                     return name
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug(f'查询昵称失败 {user_id}: {e}')
     return f'用户{user_id[-6:]}'
 
 
@@ -65,8 +68,8 @@ def _batch_get_nicknames(user_ids):
                         if uid and nm and uid not in out:
                             out[uid] = nm
                             _nickname_cache[uid] = {'name': nm, 'ts': now}
-                except Exception:
-                    pass
+                except Exception as e:
+                    log.debug(f'批量查询昵称失败: {e}')
     # fallback for missing
     for uid in user_ids:
         if uid and uid not in out:

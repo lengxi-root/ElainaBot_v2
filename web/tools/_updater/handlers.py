@@ -212,8 +212,8 @@ async def handle_test_mirrors(request: web.Request):
     try:
         await resp.write(b'data: {"done": true}\n\n')
         await resp.write_eof()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug(f'SSE 结束标记发送失败: {e}')
     return resp
 
 

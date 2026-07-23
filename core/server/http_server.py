@@ -72,8 +72,8 @@ class HttpServer:
             from web.ws import get_broadcast
 
             get_broadcast().shutdown()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug(f'关闭面板长连接失败: {e}')
 
         if self._sites:
             for site in self._sites:

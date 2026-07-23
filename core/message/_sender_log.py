@@ -57,7 +57,7 @@ class _SenderLogMixin:
                 rows = kb.get('content', {}).get('rows', [])
                 labels = [b.get('render_data', {}).get('label', '?') for r in rows for b in r.get('buttons', [])]
                 text += '\n[keyboard] ' + ' | '.join(labels)
-            except Exception:
+            except (AttributeError, TypeError):
                 pass
         return text
 
