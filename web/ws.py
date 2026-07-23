@@ -200,8 +200,10 @@ async def handle_sse(request: web.Request) -> web.StreamResponse:
                 await resp.write(f'data: {payload}\n\n'.encode())
             except TimeoutError:
                 await resp.write(b': keepalive\n\n')
-    except (asyncio.CancelledError, ConnectionResetError, Exception):
-        pass
+    except asyncio.CancelledError:
+        pass  # 客户端断开时 aiohttp 会取消 handler
+    except Exception as e:
+        log.debug(f'SSE 连接异常: {e}')
     finally:
         _broadcast.sse_queues.discard(queue)
         log.debug(f'SSE 客户端已断开 (WS:{len(_broadcast.clients)} SSE:{len(_broadcast.sse_queues)})')

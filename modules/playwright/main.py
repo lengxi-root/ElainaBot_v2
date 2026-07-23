@@ -221,9 +221,9 @@ class PlaywrightRenderer:
                             log.info(f'浏览器空闲超过 {timeout}s, 自动关闭')
                             await self._close_browser()
             except asyncio.CancelledError:
-                break
-            except Exception:
-                pass
+                raise
+            except Exception as e:
+                log.debug(f'空闲清理异常: {e}')
 
     # ---------- 核心 API ----------
 

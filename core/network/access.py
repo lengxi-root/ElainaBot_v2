@@ -124,7 +124,7 @@ class TokenManager:
                     break
                 await self._refresh()
             except asyncio.CancelledError:
-                break
+                raise
             except Exception as e:
                 logger.warning(f'[{self.appid}] 自动刷新异常: {e}')
                 await asyncio.sleep(30)

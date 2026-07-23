@@ -27,7 +27,7 @@ def main():
                      cwd=os.path.dirname(main_path))
     time.sleep(1)
     try: os.remove(__file__)
-    except: pass
+    except OSError: pass
     sys.exit(0)
 if __name__ == "__main__":
     main()
@@ -44,12 +44,12 @@ def main():
                     proc = psutil.Process(conn.pid)
                     proc.terminate()
                     proc.wait(timeout=3)
-                except: pass
-    except: pass
+                except (psutil.Error, OSError): pass
+    except Exception: pass
     time.sleep(1)
     os.chdir(os.path.dirname(main_path))
     try: os.remove(__file__)
-    except: pass
+    except OSError: pass
     os.execv(sys.executable, [sys.executable, main_path])
 if __name__ == "__main__":
     main()
