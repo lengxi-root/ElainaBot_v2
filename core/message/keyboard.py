@@ -3,6 +3,26 @@
 
 from core.base.config import cfg
 
+# 弹窗文案长度限制 (QQ API 校验, 超长报 40011021)
+_MODAL_CONTENT_MAX = 30
+_MODAL_BTN_TEXT_MAX = 4
+
+
+def _clamp_modal(modal):
+    """规范化弹窗参数: str 转 dict, 超长文案自动截断"""
+    if isinstance(modal, str):
+        modal = {'content': modal}
+    if not isinstance(modal, dict):
+        return modal
+    content = modal.get('content')
+    if isinstance(content, str) and len(content) > _MODAL_CONTENT_MAX:
+        modal['content'] = content[:_MODAL_CONTENT_MAX]
+    for key in ('confirm_text', 'cancel_text'):
+        text = modal.get(key)
+        if isinstance(text, str) and len(text) > _MODAL_BTN_TEXT_MAX:
+            modal[key] = text[:_MODAL_BTN_TEXT_MAX]
+    return modal
+
 
 def build_keyboard(button_rows, appid=None, *, font_size=None, style=None):
     """按钮行列表 → QQ InlineKeyboard 结构, font_size 控制按钮大小 (small/middle/large)"""
@@ -72,9 +92,9 @@ def build_keyboard(button_rows, appid=None, *, font_size=None, style=None):
             if 'tips' in btn:
                 b['action']['unsupport_tips'] = btn['tips']
 
-            # 二次确认弹窗
-            if modal := btn.get('modal'):
-                b['action']['modal'] = {'content': modal} if isinstance(modal, str) else modal
+            # 二次确认弹窗 (超长文案自动截断)
+            if modal := (btn.get('modal') or action.get('modal')):
+                b['action']['modal'] = _clamp_modal(modal)
 
             # 订阅按钮: subscribe -> type=4 + subscribe_data
             if (sub := btn.get('subscribe')) is not None:
