@@ -14,6 +14,7 @@ from functools import wraps
 
 from aiohttp import web
 
+from core.base.config import cfg
 from web.response import error
 
 _BAN_DURATION = 43200
@@ -133,8 +134,6 @@ def _peer_ip(request: web.Request) -> str:
 
 def _trust_forwarded() -> bool:
     try:
-        from core.base.config import cfg
-
         return bool(cfg.get('settings', 'web.trust_forwarded_headers', False))
     except Exception:
         return False
