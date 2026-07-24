@@ -149,7 +149,18 @@ async def check_in(event, match):
 
 #### 3.1.1 `block` 放行 / 拦截
 
-多个插件注册相同指令时, `block=False` (默认) 放行让所有命中处理器按 `priority` 顺序执行, `block=True` 命中即拦截后续低优先级处理器。示例见 `plugins/alone/示例插件.py` 的「拦截示例」。
+多个插件注册相同指令时, `block=False` (默认) 放行让所有命中处理器按 `priority` 顺序执行, `block=True` 命中即拦截后续低优先级处理器:
+
+```python
+@handler(r'^状态$', name='系统状态', priority=10, block=True)  # 命中即拦截, 只有它响应
+async def status(event, match):
+    await event.reply("✅ 系统正常")
+
+
+@handler(r'^状态$', name='天气状态', priority=0)  # 被上面 block 拦截, 不会触发
+async def weather(event, match):
+    await event.reply("☀️ 今天晴")
+```
 
 ### 3.2 `@on_load` / `@on_unload` 生命周期钩子
 
@@ -418,12 +429,17 @@ await event.reply('🔔 订阅推送', buttons=buttons, msg_type=2)
 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
-# 从订阅表取该群对应模板的 subscribe_id, 发送时携带即可
-ok, data, _ = await event.send_to_group(group_id, '🔔 订阅消息', subscribe_id=subscribe_id)
-# 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送; 单群有每日推送限额
+markdown_id = '102134274_1749040268'  # markdown 模板 id (订阅按钮 subscribe 字段填的那个)
+# 先查该群订阅了哪些模板: [{template_id, sub_type, subscribe_id}, ...]
+subs = log_service.subscribe_get_by_target(group_id)
+t = next((x for x in subs if x['template_id'] == markdown_id), None)
+if t:
+    ok, data, _ = await event.send_to_group(
+        group_id, '🔔 这是一条订阅消息推送', subscribe_id=t['subscribe_id'])
+    # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送; 单群有每日推送限额
+    if ok and t['sub_type'] == 'once':
+        await log_service.subscribe_consume(markdown_id, group_id)
 ```
-
-完整可运行示例 (含订阅表查询与 `log_service` 获取方式) 见 `plugins/alone/示例插件.py` 的「订阅消息」指令。
 
 #### 小按钮 (键盘级字号)
 
