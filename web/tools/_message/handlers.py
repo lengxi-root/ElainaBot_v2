@@ -299,7 +299,7 @@ async def handle_get_chat_history(request: web.Request):
         )
 
     # 按 timestamp 排序, 将消息和事件混合
-    messages.sort(key=lambda m: m.get('timestamp', ''))
+    messages.sort(key=lambda m: str(m.get('timestamp', '')))
 
     # 取最近一条非 bot 消息的 message_id 用于发送回复 (仅初始加载)
     last_msg_id = ''

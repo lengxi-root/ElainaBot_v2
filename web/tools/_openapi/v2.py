@@ -263,7 +263,9 @@ async def handle_v2_upload_avatar(request: web.Request):
     payload = data if isinstance(data, dict) else result
     upload_url = result.get('upload_url') or payload.get('upload_url')
     upload_id = result.get('upload_id') or payload.get('upload_id')
-    parsed = urlparse(upload_url if isinstance(upload_url, str) else '')
+    if not isinstance(upload_url, str):
+        return h._err('获取上传地址失败')
+    parsed = urlparse(upload_url)
     if parsed.scheme != 'https' or not (parsed.hostname or '').endswith('.myqcloud.com') or not upload_id:
         return h._err('获取上传地址失败')
 
