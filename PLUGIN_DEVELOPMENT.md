@@ -337,7 +337,7 @@ await event.send_to_group(event.group_id, "# 标题", msg_type=2)
 | `2` | 原生 Markdown |
 | `3` | Ark 卡片 (由 `reply_ark` 自动设置) |
 | `7` | 富媒体 (由 `reply_image` 等自动设置) |
-| `8` | 图文卡片 (由 `reply_tuwen` 自动设置) |
+| `8` | 卡片消息 (由 `reply_card` 自动设置) |
 
 > 不传 `msg_type` 时按 `message.use_markdown` 配置决定。
 
@@ -460,13 +460,19 @@ await event.reply_ark(37, (
     "提示", "标题", "副标题", "图片URL", "跳转URL"))
 ```
 
-### 5.3.1 图文卡片 (tuwen)
+### 5.3.1 卡片消息 (msg_type=8)
+
+`reply_card(card_type, data)` 发送卡片消息, `card_type` 可自定义以支持平台新增卡片类型, `data` 为 dict 时原样作为 `card.content` 发送:
 
 ```python
-# 元组简写: (标题, 描述, 图片URL, 跳转URL); 也支持 title= / description= / pic_url= / url= 关键字传参
-await event.reply_tuwen((
+# tuwen 图文卡片, 元组简写: (标题, 描述, 图片URL, 跳转URL)
+await event.reply_card('tuwen', (
     "QQ开放平台", "2分钟完成注册并创建QQBot",
     "https://example.com/pic.png", "https://q.qq.com/#/"))
+
+# 自定义类型/字段, dict 原样透传
+await event.reply_card('tuwen', {
+    'title': 'QQ开放平台', 'description': '...', 'pic_url': '...', 'url': '...'})
 ```
 
 ### 5.4 模板消息

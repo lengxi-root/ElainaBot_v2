@@ -90,10 +90,13 @@ async def send_ark37(event, match):
         "系统通知", "状态更新", "新功能上线", IMG, "https://i.elaina.vin/api/"))
 
 
-@handler(r'^图文卡片$', name='图文卡片', desc='tuwen 图文卡片', owner_only=True)
-async def send_tuwen(event, match):
-    await event.reply_tuwen((
+@handler(r'^图文卡片$', name='图文卡片', desc='card 卡片消息 (tuwen)', owner_only=True)
+async def send_card(event, match):
+    # tuwen 元组简写: (标题, 描述, 图片URL, 跳转URL)
+    await event.reply_card('tuwen', (
         "QQ开放平台", "2分钟完成注册并创建QQBot", IMG, "https://q.qq.com/#/"))
+    # 也可传自定义 card_type 与字段 dict, 原样作为 card.content 发送:
+    # await event.reply_card('xxx', {'title': '...', 'custom_field': '...'})
 
 
 # ==================== 按钮 ====================
