@@ -102,29 +102,22 @@ BUTTONS = [
     [{'text': '点我回调', 'data': 'callback_1', 'type': 1},
      {'text': '输入框', 'data': '/帮助', 'type': 2}],
     [{'text': '打开链接', 'link': 'https://i.elaina.vin/'}],
+    # 订阅按钮 (type=4): 需挂在 markdown 消息 (msg_type=2) 上发送
+    [{'text': '订阅', 'show': '已订阅',
+      'subscribe': '102134274_1749040268',  # 替换为机器人 Markdown 模板 id
+      'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
+      'tips': '请升级QQ版本'}],
 ]
 
 
-@handler(r'^按钮$', name='按钮示例', desc='发送带按钮的消息', owner_only=True)
+@handler(r'^按钮$', name='按钮示例', desc='发送带按钮的消息 (含订阅按钮)', owner_only=True)
 async def send_buttons(event, match):
-    await event.reply("📌 按钮功能演示", buttons=BUTTONS)
+    await event.reply("📌 按钮功能演示", buttons=BUTTONS, msg_type=2)
 
 
 @handler(r'^小按钮$', name='小按钮示例', desc='键盘级 font_size=small', owner_only=True)
 async def send_small_buttons(event, match):
-    await event.reply("📌 小按钮演示", buttons={'rows': BUTTONS, 'font_size': 'small'})
-
-
-@handler(r'^订阅按钮$', name='订阅按钮示例', desc='订阅按钮 (type=4) 与二次确认弹窗', owner_only=True)
-async def send_subscribe_buttons(event, match):
-    # 订阅按钮需挂在 markdown 消息 (msg_type=2) 上发送
-    buttons = [[{
-        'text': '订阅', 'show': '已订阅',
-        'subscribe': '102134274_1749040268',  # 替换为机器人 Markdown 模板 id
-        'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
-        'tips': '请升级QQ版本',
-    }]]
-    await event.reply("🔔 订阅按钮演示", buttons=buttons, msg_type=2)
+    await event.reply("📌 小按钮演示", buttons={'rows': BUTTONS, 'font_size': 'small'}, msg_type=2)
 
 
 @handler(r'', name='订阅状态事件', desc='用户订阅/取消订阅时触发', event_types=['SUBSCRIBE_MESSAGE_STATUS'])
