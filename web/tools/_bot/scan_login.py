@@ -157,13 +157,7 @@ class _UnquotedCookieJar(aiohttp.CookieJar):
 
 
 class QQScanLogin:
-    """一次性的 q.qq.com 新版扫码登录会话。
-
-    流程: create_session → ptlogin2 扫码 → check_sig → write_login_state 绑定
-    → /lite/poll → bopen/callback 302 下发 b-token/qticket 等凭证。
-    跨请求共享同一 CookieJar 以保持登录态, 每次操作新建短生命周期 ClientSession。
-    状态: waiting / scanned / confirming / selecting / expired / rejected / failed / logged_in
-    """
+    """一次性 q.qq.com 扫码登录会话 (create_session→扫码→check_sig→绑定→poll→callback 下发凭证), 跨请求共享 CookieJar, 状态: waiting/scanned/confirming/selecting/expired/rejected/failed/logged_in"""
 
     APPID = _PT_APPID
     DAID = _PT_DAID

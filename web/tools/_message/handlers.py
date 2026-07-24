@@ -16,6 +16,7 @@ from urllib.parse import quote
 from aiohttp import BodyPartReader, web
 
 import web.tools._message.shared as _shared
+from core.base.tasks import spawn
 from web.tools._message.log_utils import (
     _build_display,
     _log_send_error,
@@ -160,7 +161,7 @@ async def handle_get_chats(request: web.Request):
         chats = cached[1]
         if time.time() - cached[0] >= _CHAT_LIST_TTL and cache_key not in _chat_refreshing:
             _chat_refreshing.add(cache_key)
-            asyncio.get_event_loop().create_task(_refresh_chat_list(cache_key, chat_type, appid_filter))
+            spawn(_refresh_chat_list(cache_key, chat_type, appid_filter))
     else:
         # 首次无缓存, 同类请求合并等待一次构建
         async with _chat_list_lock:
@@ -382,8 +383,7 @@ async def handle_send_message(request: web.Request):
         if not message_reference_id and quote_message_id:
             message_reference_id = _lookup_reference_id(bot, chat_type, chat_id, quote_message_id)
 
-        # 发送方式: default=全量群主动/普通群被动, active=主动, passive=被动,
-        # custom_msg_id/custom_event_id=手动指定 ID
+        # 发送方式: default=全量群主动/普通群被动, active=主动, passive=被动, custom_msg_id/custom_event_id=手动指定 ID
         event_id = ''
         if send_mode == 'active':
             msg_id = ''

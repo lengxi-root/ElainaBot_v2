@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from core.base.config import cfg
 from core.base.logger import FRAMEWORK, PLUGIN, get_logger, report_error
+from core.base.tasks import spawn
 from core.plugin.context import _make_reply_log_cb
 
 if TYPE_CHECKING:
@@ -125,7 +126,7 @@ class _DispatchMixin:
                     break
             if not matched:
                 return False
-            asyncio.create_task(self._run_chain(matched, event, user_id, et, content))
+            spawn(self._run_chain(matched, event, user_id, et, content))
             return True
 
         # ── 消息事件: 完整检查链 ──
@@ -155,13 +156,13 @@ class _DispatchMixin:
                 kind, reason = bl
                 tpl: str = 'blacklist' if kind == 'user' else 'group_blacklist'
                 tvars: dict[str, str] = {'user_id': user_id, 'reason': reason}
-                asyncio.create_task(event.reply(template_name=tpl, template_vars=tvars))
+                spawn(event.reply(template_name=tpl, template_vars=tvars))
             return True
 
         # 维护模式
         if not suppress_reply and _get(appid, 'maintenance.enabled', False) and not self._is_owner(event):
             if _get(appid, 'maintenance.reply', True):
-                asyncio.create_task(event.reply(template_name='maintenance'))
+                spawn(event.reply(template_name='maintenance'))
             return True
 
         # 非AT群消息权限
@@ -204,7 +205,7 @@ class _DispatchMixin:
         if should_default and _get(appid, 'message.send_default_response', True):
             excluded: list[str] = _get(appid, 'message.default_response_excluded_regex', []) or []
             if not any(re.search(p, content) for p in excluded if p):
-                asyncio.create_task(event.reply(template_name='default', template_vars={'user_id': user_id}))
+                spawn(event.reply(template_name='default', template_vars={'user_id': user_id}))
         return False
 
     def _match_handlers(
@@ -243,7 +244,7 @@ class _DispatchMixin:
                 # 群聊专属指令在私聊环境 → 告知用户并终止
                 if h['group_only'] and not is_non_at:
                     self._fire_chain(matched, event, user_id, et, content)
-                    asyncio.create_task(
+                    spawn(
                         event.reply(
                             template_name='group_only',
                             template_vars={'user_id': user_id},
@@ -255,7 +256,7 @@ class _DispatchMixin:
             if h['owner_only'] and not self._is_owner(event):
                 self._fire_chain(matched, event, user_id, et, content)
                 if not is_non_at:
-                    asyncio.create_task(
+                    spawn(
                         event.reply(
                             template_name='owner_only',
                             template_vars={'user_id': user_id},
@@ -280,7 +281,7 @@ class _DispatchMixin:
     ) -> None:
         """调度命中的 handler 链顺序执行 (空则跳过)"""
         if matched:
-            asyncio.create_task(self._run_chain(matched, event, user_id, et, content))
+            spawn(self._run_chain(matched, event, user_id, et, content))
 
     async def _run_chain(
         self,

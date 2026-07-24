@@ -27,8 +27,7 @@ def safe_extractall(zf: zipfile.ZipFile, dest_dir: str) -> None:
 
 
 def replace_dir_from_zip(zf: zipfile.ZipFile, target_dir: str, top_dir: str = '') -> None:
-    """安全解压 zip 到 target_dir; 若已存在先备份为 .bak。
-    top_dir 非空表示 zip 内为单一顶层目录, 解压后将其内容移动到 target_dir。"""
+    """安全解压 zip 到 target_dir (已存在先备份为 .bak); top_dir 非空表示 zip 内为单一顶层目录, 解压后将其内容移动到 target_dir"""
     if os.path.exists(target_dir):
         backup = target_dir + '.bak'
         if os.path.exists(backup):
