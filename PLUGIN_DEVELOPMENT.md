@@ -277,13 +277,8 @@ async def filter_keywords(event):
 # 文本回复
 await event.reply("Hello!")
 
-# 带按钮回复 (完整字段参考见 5.2 节)
-buttons = [
-    [{'text': '回调', 'data': 'cb_1', 'type': 1},      # 回调按钮
-     {'text': '输入', 'data': '/帮助', 'type': 2}],    # 填充指令到输入框
-    [{'text': '链接', 'link': 'https://example.com'}],  # 链接按钮 (等同 type=0)
-]
-await event.reply("📌 选择操作", buttons=buttons)
+# 带按钮回复 (按钮字段与示例见 5.2 节)
+await event.reply("📌 选择操作", buttons=[[{'text': '回调', 'data': 'cb_1', 'type': 1}]])
 
 # 自动撤回 (秒)
 await event.reply("⏰ 5秒后撤回", auto_delete_time=5)
@@ -356,9 +351,7 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 
 ### 5.2 按钮完整字段参考
 
-按钮是二维数组 `list[list[dict]]` (行 × 列), 每个按钮是一个字典。
-
-#### 核心字段
+按钮是二维数组 `list[list[dict]]` (行 × 列), 每个按钮是一个字典。全部字段一览:
 
 | 字段 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -368,29 +361,16 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 | `link` | `str` | — | 快捷方式: 设置后自动设为 `type=0 + data=link` |
 | `show` | `str` | `text` | 点击后显示的文字 (visited_label) |
 | `style` | `int` | `1` | 样式: `0`=灰框 / `1`=蓝框蓝字 / `2`=黑框(PC 端气泡) / `3`=黑框红字 / `4`=蓝底白字 |
+| `enter` | `bool` | — | 已失效，无论填写不填写，最终都会被开放平台删掉 |
+| `reply` | `bool` | — | 点击后作为引用回复发送 |
+| `limit` | `int` | — | 点击次数限制 (`click_limit`)可能无效 |
+| `tips` | `str` | — | 不支持时的提示文字 (`unsupport_tips`) |
+| `modal` | `str`/`dict` | — | 点击后的二次确认弹窗; 字符串等价于 `{'content': 文本}`, dict 可额外指定 `confirm_text` / `cancel_text` |
+| `subscribe` | `str`/`list`/`dict` | — | 订阅模板 ID, 设置后自动设为 `type=4` 并生成 `subscribe_data`; 含 `_` 的 ID 转为 `custom_template_id`, 否则为 `template_id`; dict 原样透传 |
 
-#### 行为字段
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `enter` | `bool` | 已失效，无论填写不填写，最终都会被开放平台删掉|
-| `reply` | `bool` | 点击后作为引用回复发送 |
-| `limit` | `int` | 点击次数限制 (`click_limit`)可能无效 |
-| `tips` | `str` | 不支持时的提示文字 (`unsupport_tips`) |
-| `modal` | `str`/`dict` | 点击后的二次确认弹窗; 字符串等价于 `{'content': 文本}`, dict 可额外指定 `confirm_text` / `cancel_text` |
-| `subscribe` | `str`/`list`/`dict` | 订阅模板 ID, 设置后自动设为 `type=4` 并生成 `subscribe_data`; 含 `_` 的 ID 转为 `custom_template_id`, 否则为 `template_id`; dict 原样透传 |
+**权限字段** (五者二选一, 优先级从上到下): `permission` (显式权限对象, 如 `{'type': 1}`) > `role` (身份组 ID 列表, 频道场景 → type=3) > `list` (用户 ID 列表 → type=0) > `admin` (仅管理员 → type=1) > 默认所有人可点 (type=2)。
 
 平台原生 action 字段 (`subscribe_data` / `click_limit` / `unsupport_tips` / `anchor`) 也可以直接写在按钮字典里, 原样透传到 `action`; 写了 `subscribe_data` 且未指定 `type` 时自动设为 `type=4`。
-
-#### 权限字段 (五者二选一, 优先级从上到下)
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| `permission` | `dict` | 显式权限对象, 如 `{'type': 1}` |
-| `role` | `list[str]` | 指定身份组 ID 列表 (频道场景) → `type=3` |
-| `list` | `list[str]` | 指定用户 ID 列表 → `type=0` |
-| `admin` | `bool` | 仅管理员可点 → `type=1` |
-| _默认_ | — | 所有人可点 → `type=2` |
 
 #### 按钮示例
 
@@ -443,25 +423,15 @@ if t:
 
 通过键盘级样式 `content.style.font_size` 控制整组按钮的大小 (对应官方 botgo
 `CustomKeyboard.Style.FontSize`), 取值 `small` / `middle` / `large`, `small`
-即「小按钮」。两种用法:
+即「小按钮」, 不传则保持默认大小:
 
 ```python
-# 方式一: reply 关键字 button_font_size
+# 方式一: reply 关键字 button_font_size / button_style
 await event.reply("📌 小按钮面板", buttons=buttons, button_font_size='small')
+await event.reply("📌", buttons=buttons, button_style={'font_size': 'small'})  # 整体样式 dict, 对应平台 keyboard.content.style
 
 # 方式二: buttons 用 dict 包装 (适用于所有发送入口, 含主动推送/频道)
 await event.reply("📌 小按钮面板", buttons={'rows': buttons, 'font_size': 'small'})
-```
-
-不传则保持原默认大小。
-
-键盘级样式还可以整体传 dict (对应平台 `keyboard.content.style`):
-
-```python
-# 方式一: reply 关键字 button_style
-await event.reply("📌", buttons=buttons, button_style={'font_size': 'small'})
-
-# 方式二: buttons dict 包装的 style 字段
 await event.reply("📌", buttons={'rows': buttons, 'style': {'font_size': 'small'}})
 ```
 
@@ -532,20 +502,15 @@ await event.send_to_user(event.user_id, "主动私聊消息")
 await event.send_to_channel("频道ID", "频道消息")
 ```
 
-#### `send_to_group` / `send_to_user` 完整参数
+#### `send_to_group` / `send_to_user` 参数
+
+除首参为目标 ID 外, `content` / `buttons` / `media` / `msg_type` / `skip_suffix` / `message_reference_id` / `**kwargs` 透传均与 `reply()` 一致 (见 5.1), 额外支持:
 
 ```python
 await event.send_to_group(
-    group_id,                  # 目标群 ID (send_to_user 为 user_id)
-    content=None,              # 文本内容
-    msg_id=None,               # 关联消息 ID → 变为被动回复 (不占主动推送额度)
-    event_id=None,             # 关联事件 ID (加群/加好友等事件回复)
-    buttons=None,              # 按钮 (同 reply)
-    media=None,                # media 对象 (高级用法)
-    msg_type=None,             # 强制消息类型 (见 5.1.2)
-    skip_suffix=False,         # 跳过全局 markdown 后缀
-    message_reference_id=None, # 引用回复 REFIDX
-    # **kwargs 同样透传到载荷
+    group_id,      # 目标群 ID (send_to_user 为 user_id)
+    msg_id=None,   # 关联消息 ID → 变为被动回复 (不占主动推送额度)
+    event_id=None, # 关联事件 ID (加群/加好友等事件回复)
 )
 ```
 
