@@ -142,11 +142,7 @@ class _UnquotedCookieJar(aiohttp.CookieJar):
         unquoted: BaseCookie[str] = BaseCookie()
         for name, cookie in cookies.items():
             morsel: Morsel[str] = Morsel()
-            morsel.__setstate__({
-                'key': name,
-                'value': cookie.value,
-                'coded_value': cookie.value,
-            })
+            morsel.set(name, cookie.value, cookie.value)
             unquoted[name] = morsel
         return unquoted
 

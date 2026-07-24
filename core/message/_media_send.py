@@ -3,6 +3,8 @@
 import asyncio
 import hashlib
 import os
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from core.base.logger import FRAMEWORK, get_logger
 from core.message._http import (
@@ -21,6 +23,10 @@ class _MediaSendMixin:
 
     _MEDIA_TYPE_NAMES = {1: '图片', 2: '视频', 3: '语音', 4: '文件'}
     _MEDIA_TYPE_EXTS = {1: '.png', 2: '.mp4', 3: '.mp3', 4: '.dat'}
+
+    # 宿主类 (MessageSender) 提供的属性/方法声明
+    _appid: str
+    _ensure_client: Callable[[], Awaitable[Any]]
 
     def _maybe_auto_recall(self, event, data, delay):
         if delay and data:
