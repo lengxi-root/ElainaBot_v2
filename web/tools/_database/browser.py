@@ -188,16 +188,15 @@ async def handle_list_tables(request: web.Request):
                 count = count_row['c'] if count_row else 0
 
                 # 获取列信息
-                columns = []
-                for col in conn.execute(f'PRAGMA table_info("{tname}")'):
-                    columns.append(
-                        {
-                            'name': col['name'],
-                            'type': col['type'],
-                            'notnull': bool(col['notnull']),
-                            'pk': bool(col['pk']),
-                        }
-                    )
+                columns = [
+                    {
+                        'name': col['name'],
+                        'type': col['type'],
+                        'notnull': bool(col['notnull']),
+                        'pk': bool(col['pk']),
+                    }
+                    for col in conn.execute(f'PRAGMA table_info("{tname}")')
+                ]
 
                 tables.append(
                     {
@@ -253,9 +252,7 @@ async def handle_query_table(request: web.Request):
             data = [dict(r) for r in rows]
 
             # 列信息
-            columns = []
-            for col in conn.execute(f'PRAGMA table_info("{table}")'):
-                columns.append({'name': col['name'], 'type': col['type']})
+            columns = [{'name': col['name'], 'type': col['type']} for col in conn.execute(f'PRAGMA table_info("{table}")')]
 
         return ok(
             {

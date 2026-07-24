@@ -117,10 +117,6 @@ def get_routes() -> list:
         web.get('/api/statistics/totals', _(statistics_handler.handle_get_totals)),
         web.get('/api/statistics/hourly', _(statistics_handler.handle_get_hourly_statistics)),
         web.get('/api/statistics/chart', _(statistics_handler.handle_get_chart_data)),
-        web.get(
-            '/api/statistics/task/{task_id}',
-            _(statistics_handler.handle_get_task_status),
-        ),
         web.get('/api/statistics/dates', _(statistics_handler.handle_get_available_dates)),
         # ── 更新 ──
         web.get('/api/update/changelog', _(update_handler.handle_get_changelog)),

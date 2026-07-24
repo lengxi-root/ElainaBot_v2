@@ -92,7 +92,7 @@ async def handle_get_nicknames_batch(request: web.Request):
 
 async def _build_chat_list(chat_type, appid_filter):
     """构建聊天列表 (阻塞聚合在专用线程池执行)"""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     if chat_type in ('full_access', 'remark'):
         # 全量群/备注群直接从 data.db 获取
         fa_ids = _get_full_access_group_ids()
@@ -206,7 +206,7 @@ async def handle_get_chat_history(request: web.Request):
     if not chat_id:
         return web.json_response({'success': True, 'data': {'messages': [], 'has_more': False}})
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     if before_date:
         rows, oldest_date, has_more = await loop.run_in_executor(
@@ -636,12 +636,18 @@ _roles_cache: dict[str, tuple[float, dict[str, str]]] = {}
 _ROLES_CACHE_TTL = 120
 
 
+def _prune_roles_cache(now):
+    for gid in [gid for gid, (ts, _) in _roles_cache.items() if now - ts >= _ROLES_CACHE_TTL]:
+        _roles_cache.pop(gid, None)
+
+
 def _get_group_members_sync(group_id):
     """从 groups_users 表读取群成员信息 {user_id: {role, is_bot}}"""
     now = time.time()
     cached = _roles_cache.get(group_id)
     if cached and now - cached[0] < _ROLES_CACHE_TTL:
         return cached[1]
+    _prune_roles_cache(now)
     if not _shared._bot_manager:
         return {}
     members: dict[str, dict] = {}
@@ -675,6 +681,6 @@ async def handle_get_group_roles(request: web.Request):
     group_id = body.get('group_id', '')
     if not group_id:
         return web.json_response({'success': False, 'message': '缺少 group_id'}, status=400)
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     members = await loop.run_in_executor(None, _get_group_members_sync, group_id)
     return web.json_response({'success': True, 'data': members})

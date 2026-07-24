@@ -76,8 +76,7 @@ def _serialize_value(key, value, indent=1):
         return [f'{pad}{key}: {_serialize_buttons(value)}']
     if isinstance(value, str) and '\n' in value:
         lines = [f'{pad}{key}: |']
-        for ln in value.rstrip('\n').split('\n'):
-            lines.append(f'{pad}  {ln}' if ln.strip() else f'{pad}')
+        lines.extend(f'{pad}  {ln}' if ln.strip() else f'{pad}' for ln in value.rstrip('\n').split('\n'))
         return lines
     return [f'{pad}{key}: {_yaml_scalar(value)}']
 
