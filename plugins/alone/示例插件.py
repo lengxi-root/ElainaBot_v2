@@ -99,9 +99,16 @@ async def send_tuwen(event, match):
 # ==================== 按钮 ====================
 
 BUTTONS = [
+    # type: 0=跳转链接 / 1=回调 / 2=输入指令 / 4=订阅 (link 等同 type=0)
     [{'text': '点我回调', 'data': 'callback_1', 'type': 1},
      {'text': '输入框', 'data': '/帮助', 'type': 2}],
     [{'text': '打开链接', 'link': 'https://i.elaina.vin/'}],
+    # style: 0=灰框 / 1=蓝框蓝字(默认) / 2=黑框(PC 端气泡) / 3=黑框红字 / 4=蓝底白字
+    [{'text': '灰框', 'data': 's0', 'type': 1, 'style': 0},
+     {'text': '蓝框蓝字', 'data': 's1', 'type': 1, 'style': 1},
+     {'text': '黑框', 'data': 's2', 'type': 1, 'style': 2},
+     {'text': '黑框红字', 'data': 's3', 'type': 1, 'style': 3},
+     {'text': '蓝底白字', 'data': 's4', 'type': 1, 'style': 4}],
     # 订阅按钮 (type=4): 需挂在 markdown 消息 (msg_type=2) 上发送
     [{'text': '订阅', 'show': '已订阅',
       'subscribe': '102134274_1749040268',  # 替换为机器人 Markdown 模板 id
