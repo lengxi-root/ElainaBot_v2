@@ -8,6 +8,7 @@ import sqlite3
 
 from aiohttp import web
 
+from core.base.config import cfg
 from web.response import error, ok
 
 log = logging.getLogger('ElainaBot.web.database')
@@ -50,8 +51,6 @@ def _save_mounted(paths):
 
 def _log_base_dir():
     """日志根目录"""
-    from core.base.config import cfg
-
     log_dir = cfg.get('settings', 'logging.dir', 'log')
     return os.path.join(_base_dir, 'data', log_dir)
 
@@ -134,7 +133,7 @@ def _validate_db_path(db_path):
     if not os.path.isfile(abs_path):
         return False, ''
     log_base = os.path.abspath(_log_base_dir())
-    if abs_path.startswith(log_base):
+    if abs_path == log_base or abs_path.startswith(log_base + os.sep):
         return True, abs_path
     mounted = {os.path.abspath(p) for p in _load_mounted()}
     if abs_path in mounted:

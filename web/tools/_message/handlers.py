@@ -6,10 +6,12 @@ import json
 import logging
 import os
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date as _date
 from datetime import timedelta
 from typing import Any, cast
+from urllib.parse import quote
 
 from aiohttp import BodyPartReader, web
 
@@ -299,7 +301,7 @@ async def handle_get_chat_history(request: web.Request):
         )
 
     # 按 timestamp 排序, 将消息和事件混合
-    messages.sort(key=lambda m: m.get('timestamp', ''))
+    messages.sort(key=lambda m: str(m.get('timestamp', '')))
 
     # 取最近一条非 bot 消息的 message_id 用于发送回复 (仅初始加载)
     last_msg_id = ''
@@ -467,8 +469,6 @@ async def handle_send_message(request: web.Request):
         return web.json_response({'success': False, 'message': err_msg})
 
     except Exception as e:
-        import traceback
-
         traceback.print_exc()
         return web.json_response({'success': False, 'message': str(e)}, status=500)
 
@@ -493,8 +493,6 @@ async def handle_recall_message(request: web.Request):
     if not bot:
         return web.json_response({'success': False, 'message': '无可用机器人'}, status=400)
 
-    from urllib.parse import quote
-
     endpoint = f'/v2/{"groups" if chat_type == "group" else "users"}/{chat_id}/messages/{quote(message_id, safe="")}'
 
     try:
@@ -513,10 +511,7 @@ async def handle_recall_message(request: web.Request):
 
 def _mark_recalled(bot, message_id):
     """在数据库中标记消息为已撤回"""
-    from datetime import date as _d
-    from datetime import timedelta
-
-    today = _d.today()
+    today = _date.today()
     dates = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(3)]
     sql = "UPDATE log SET raw_message='[recalled]' WHERE message_id=?"
     svc = bot.log_service

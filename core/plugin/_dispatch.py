@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from core.base.config import cfg
@@ -63,6 +63,13 @@ class _DispatchMixin:
     """高性能事件分发"""
 
     _cached_app: Any = None
+
+    # 宿主类 (PluginManager) 提供的属性/方法声明
+    _appid: str
+    _all_handlers: list[dict[str, Any]]
+    _all_interceptors: list[dict[str, Any]]
+    _check_blacklist: Callable[[Event], tuple[str, str] | None]
+    _is_owner: Callable[[Event], bool]
 
     # ---------- 索引构建 (由 _rebuild_handler_list 调用) ----------
 
@@ -180,7 +187,7 @@ class _DispatchMixin:
                 report_error(PLUGIN, ic.get('_plugin', '?'), e)
 
         # 处理器匹配
-        scene: int = _event_scene(event)
+        scene = _event_scene(event)
         handlers = self._handlers_for(et)
         handler_content = content
         if is_group_msg and _get(appid, 'non_at_message.strip_bot_name_at', False):

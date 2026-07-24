@@ -1,6 +1,7 @@
 """Webhook 请求处理 — 验证 / 转发 / 交互响应"""
 
 import asyncio
+import functools
 import json
 import logging
 
@@ -64,7 +65,7 @@ class WebhookHandler:
                 # 启动 ACK 倒计时, 分发结束后用插件设置的 code 兜底/返回
                 event.start_ack_countdown()
                 task = asyncio.create_task(self._on_event(event))
-                task.add_done_callback(lambda t, ev=event: _finish_interaction(ev, t))
+                task.add_done_callback(functools.partial(_finish_interaction, event))
             else:
                 asyncio.create_task(self._on_event(event))
         except Exception as e:

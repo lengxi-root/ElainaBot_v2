@@ -4,7 +4,6 @@
 import asyncio
 import json
 import os
-import random
 import re
 
 from core.base.config import cfg
@@ -18,6 +17,7 @@ from core.message._http import (
     MSG_TYPE_MEDIA,
     MSG_TYPE_TEXT,
     _HttpMixin,
+    _msg_seq,
     log,
 )
 from core.message._media_send import (
@@ -33,11 +33,6 @@ from core.message.keyboard import (
 from core.message.media import get_image_size as _get_image_size
 from core.message.media import upload_media_bytes, upload_media_via_url
 from core.message.template import tpl
-
-
-def _msg_seq():
-    return random.randint(10000, 999999)
-
 
 _ESCAPE_MAP = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\', '0': '\0', 'a': '\a', 'b': '\b', 'f': '\f', 'v': '\v'}
 
