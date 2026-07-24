@@ -137,15 +137,9 @@ from core.plugin.decorators import handler, on_load, on_unload, interceptor
 **示例**:
 
 ```python
-@handler(r'^/?菜单$', name='主菜单', desc='显示功能列表', priority=10)
-async def menu(event, match):
-    await event.reply("📋 功能列表:\n1. 签到\n2. 抽卡")
-
-
 @handler(r'^管理\s+(\S+)$', name='管理命令', owner_only=True, group_only=True)
 async def admin(event, match):
-    target = match.group(1)
-    await event.reply(f"✅ 已处理: {target}")
+    await event.reply(f"✅ 已处理: {match.group(1)}")
 
 
 @handler(r'^签到$', name='签到', ignore_at_check=True)  # 无需@即可触发
@@ -155,18 +149,7 @@ async def check_in(event, match):
 
 #### 3.1.1 `block` 放行 / 拦截
 
-多个插件注册相同指令时, `block=False` (默认) 放行让所有命中处理器按 `priority` 顺序执行, `block=True` 命中即拦截后续低优先级处理器。
-
-```python
-@handler(r'^状态$', name='系统状态', priority=10, block=True)  # 命中即拦截, 只有它响应
-async def status(event, match):
-    await event.reply("✅ 系统正常")
-
-
-@handler(r'^状态$', name='天气状态', priority=0)  # 被上面 block 拦截, 不会触发
-async def weather(event, match):
-    await event.reply("☀️ 今天晴")
-```
+多个插件注册相同指令时, `block=False` (默认) 放行让所有命中处理器按 `priority` 顺序执行, `block=True` 命中即拦截后续低优先级处理器。示例见 `plugins/alone/示例插件.py` 的「拦截示例」。
 
 ### 3.2 `@on_load` / `@on_unload` 生命周期钩子
 
@@ -398,31 +381,16 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 | `admin` | `bool` | 仅管理员可点 → `type=1` |
 | _默认_ | — | 所有人可点 → `type=2` |
 
-#### 按钮完整示例
+#### 按钮示例
 
 ```python
 buttons = [
-    # 第一行: 三种基础类型
-    [
-        {'text': '跳转官网', 'link': 'https://example.com'},        # 链接
-        {'text': '点我回调', 'data': 'cb_action_1', 'type': 1},     # 回调
-        {'text': '/帮助', 'type': 2},               # 输入后自动发送
-    ],
-    # 第二行: 权限与限制
-    [
-        {'text': '仅管理员', 'data': 'admin_only', 'type': 1, 'admin': True},
-        {'text': '指定用户', 'data': 'specific', 'type': 1,
-         'list': ['user_id_1', 'user_id_2']},
-        {'text': '点击一次', 'data': 'once', 'type': 1, 'limit': 1},
-    ],
-    # 第三行: 样式与提示
-    [
-        {'text': '灰框', 'data': 's0', 'type': 1, 'style': 0},
-        {'text': '黑框红字', 'data': 's3', 'type': 1, 'style': 3},
-        {'text': '蓝底白字', 'data': 's4', 'type': 1, 'style': 4},
-        {'text': '不支持提示', 'data': 'oops', 'type': 1,
-         'tips': '该功能仅 PC 端可用'},
-    ],
+    [{'text': '跳转官网', 'link': 'https://example.com'},          # 链接
+     {'text': '点我回调', 'data': 'cb_action_1', 'type': 1},       # 回调
+     {'text': '/帮助', 'type': 2}],                                # 填入输入框
+    [{'text': '仅管理员', 'data': 'admin_only', 'type': 1, 'admin': True},
+     {'text': '点击一次', 'data': 'once', 'type': 1, 'limit': 1},
+     {'text': '黑框红字', 'data': 's3', 'type': 1, 'style': 3}],
 ]
 await event.reply("📌 多功能按钮面板", buttons=buttons)
 ```
@@ -450,22 +418,12 @@ await event.reply('🔔 订阅推送', buttons=buttons, msg_type=2)
 但**必须携带 `subscribe_id`** — 不填写将按普通主动消息推送 (占用主动消息条数):
 
 ```python
-markdown_id = '102134274_1749040268'  # markdown 模板 id (订阅按钮 subscribe 字段填的那个)
-# 先查该群订阅了哪些模板: [{template_id, sub_type, subscribe_id}, ...]
-subs = log_service.subscribe_get_by_target(group_id)
-t = next((x for x in subs if x['template_id'] == markdown_id), None)
-if t:
-    subscribe = t['subscribe_id']  # 订阅事件返回的 subscribe_id
-    ok, data, _ = await event.send_to_group(
-        group_id, '🔔 这是一条订阅消息推送', subscribe_id=subscribe)
-    # 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送
-    if ok and t['sub_type'] == 'once':
-        await log_service.subscribe_consume(markdown_id, group_id)
+# 从订阅表取该群对应模板的 subscribe_id, 发送时携带即可
+ok, data, _ = await event.send_to_group(group_id, '🔔 订阅消息', subscribe_id=subscribe_id)
+# 单次订阅 (sub_type='once') 发送后作废, 永久订阅可重复推送; 单群有每日推送限额
 ```
 
-> ⚠️ 订阅消息有单群每日推送限额,  按需推送。
-
-完整可运行示例见 `plugins/alone/示例插件.py` 的「订阅消息」指令 (含 `log_service` 获取方式)。
+完整可运行示例 (含订阅表查询与 `log_service` 获取方式) 见 `plugins/alone/示例插件.py` 的「订阅消息」指令。
 
 #### 小按钮 (键盘级字号)
 
@@ -523,17 +481,10 @@ await event.reply_ark(37, (
 ### 5.3.1 图文卡片 (tuwen)
 
 ```python
-# 元组简写: (标题, 描述, 图片URL, 跳转URL)
+# 元组简写: (标题, 描述, 图片URL, 跳转URL); 也支持 title= / description= / pic_url= / url= 关键字传参
 await event.reply_tuwen((
     "QQ开放平台", "2分钟完成注册并创建QQBot",
     "https://example.com/pic.png", "https://q.qq.com/#/"))
-
-# 关键字参数写法
-await event.reply_tuwen(
-    title="QQ开放平台",
-    description="2分钟完成注册并创建QQBot",
-    pic_url="https://example.com/pic.png",
-    url="https://q.qq.com/#/")
 ```
 
 ### 5.4 模板消息
@@ -562,28 +513,9 @@ await event.reply_file('/path/file.zip', "📦", file_name="pkg.zip", target_gro
 ### 5.6 主动消息推送
 
 ```python
-# ---- 向当前会话发送主动消息 (自动从 event 获取目标) ----
-
-# 向当前群发送主动消息
-await event.send_to_group(event.group_id, "主动群消息")
-
-# 向当前用户发送主动私聊
+await event.send_to_group(event.group_id, "主动群消息")     # 目标 ID 可为当前会话或任意指定
 await event.send_to_user(event.user_id, "主动私聊消息")
-
-# 自动判断群/私聊
-if event.is_group:
-    await event.send_to_group(event.group_id, "来自群")
-else:
-    await event.send_to_user(event.user_id, "来自私聊")
-
-# 主动发图片到当前群
-await event.reply_image("https://...", "说明", target_group_id=event.group_id)
-
-# ---- 向指定目标发送 (手动填写 ID) ----
-
-await event.send_to_group("指定群ID", "通知内容")
-await event.send_to_user("指定用户ID", "私信内容")
-await event.send_to_channel("指定频道ID", "频道消息")
+await event.send_to_channel("频道ID", "频道消息")
 ```
 
 #### `send_to_group` / `send_to_user` 完整参数
@@ -953,15 +885,14 @@ def test_sync(event, match):
 
 ## 11. 完整示例
 
-一个具备 **元数据 + 配置 + 多 handler + Web 页面 + 生命周期** 的完整插件：
+一个具备 **元数据 + 配置 + handler + 生命周期** 的完整插件：
 
 ```python
-"""签到插件 — 带积分、配置、Web 面板"""
+"""签到插件 — 带积分与配置"""
 
-import asyncio
+import random
 import core.plugin.context as _ctx_mod
 from core.plugin.decorators import handler, on_load, on_unload
-from core.plugin.web_pages import register_page, unregister_page
 from core.base.logger import get_logger, PLUGIN
 
 __plugin_meta__ = {
@@ -969,60 +900,36 @@ __plugin_meta__ = {
     'author': 'YourName',
     'description': '每日签到 + 积分系统',
     'version': '1.0.0',
-    'license': 'MIT',
 }
 
 log = get_logger(PLUGIN, '签到')
 ctx = _ctx_mod.ctx
 
-DEFAULT_CONFIG = {
-    'reward_min': 10,
-    'reward_max': 100,
-    'cooldown_hours': 24,
-}
-
 
 @on_load
 async def init():
-    config = ctx.ensure_config(DEFAULT_CONFIG)
+    config = ctx.ensure_config({'reward_min': 10, 'reward_max': 100})
     log.info(f"签到插件已加载, 配置: {config}")
-    register_page(
-        key='checkin-stats',
-        label='签到统计',
-        source='plugin',
-        source_name='checkin',
-        html='<h1>签到统计</h1><p>开发中...</p>',
-    )
 
 
 @on_unload
 def cleanup():
-    unregister_page('checkin-stats')
     log.info("签到插件已卸载")
 
 
 @handler(r'^签到$', name='每日签到', desc='获取随机积分', ignore_at_check=True)
 async def check_in(event, match):
-    import random
     config = ctx.read_config()
     reward = random.randint(config['reward_min'], config['reward_max'])
-    await event.reply(f"✅ {event.user_id[:8]}**** 签到成功!\n获得积分: {reward}")
+    await event.reply(f"✅ 签到成功! 获得积分: {reward}")
 
 
-@handler(r'^签到排行$', name='签到排行', desc='查看签到排行榜', group_only=True)
-async def ranking(event, match):
-    await event.reply("🏆 签到排行榜:\n1. 用户A\n2. 用户B\n3. 用户C")
-
-
-@handler(r'^签到设置\s+(\d+)\s+(\d+)$', name='签到设置',
-         desc='设置签到奖励范围', owner_only=True)
+@handler(r'^签到设置\s+(\d+)\s+(\d+)$', name='签到设置', desc='设置奖励范围', owner_only=True)
 async def set_reward(event, match):
-    min_val, max_val = int(match.group(1)), int(match.group(2))
     config = ctx.read_config()
-    config['reward_min'] = min_val
-    config['reward_max'] = max_val
+    config['reward_min'], config['reward_max'] = int(match.group(1)), int(match.group(2))
     ctx.save_config(config)
-    await event.reply(f"✅ 已设置奖励范围: {min_val} ~ {max_val}")
+    await event.reply("✅ 已更新奖励范围")
 ```
 
 ---
