@@ -199,7 +199,9 @@ class MessageSender(_HttpMixin, _MediaSendMixin, _SenderLogMixin):
         return data
 
     async def reply_tuwen(self, event, title='', description='', pic_url='', url='', content='', *, auto_delete_time=None):
-        """回复图文卡片消息"""
+        """回复图文卡片消息, title 可传 (标题, 描述, 图片URL, 跳转URL) 元组/列表简写"""
+        if isinstance(title, tuple | list):
+            title, description, pic_url, url = (list(title) + [''] * 4)[:4]
         payload = {
             'msg_type': MSG_TYPE_TUWEN,
             'msg_seq': _msg_seq(),

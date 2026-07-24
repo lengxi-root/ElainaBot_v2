@@ -523,6 +523,12 @@ await event.reply_ark(37, (
 ### 5.3.1 图文卡片 (tuwen)
 
 ```python
+# 元组简写: (标题, 描述, 图片URL, 跳转URL)
+await event.reply_tuwen((
+    "QQ开放平台", "2分钟完成注册并创建QQBot",
+    "https://example.com/pic.png", "https://q.qq.com/#/"))
+
+# 关键字参数写法
 await event.reply_tuwen(
     title="QQ开放平台",
     description="2分钟完成注册并创建QQBot",
