@@ -34,6 +34,26 @@ _TOKEN_EXPIRED_CODE = 11244
 _MAX_MEDIA_DOWNLOAD = 100 * 1024 * 1024  # 100MB 下载上限, 防止 OOM
 
 
+def _describe_exception(e, method, endpoint):
+    """将网络层异常转为带原因的错误响应 (框架侧, code=-1)"""
+    name = type(e).__name__
+    detail = str(e)
+    lowered = f'{name} {detail}'.lower()
+    if 'timeout' in lowered:
+        reason = '请求超时'
+    elif 'connect' in lowered or 'connection' in lowered:
+        reason = '连接失败'
+    elif 'ssl' in lowered or 'certificate' in lowered:
+        reason = 'SSL/证书错误'
+    else:
+        reason = '网络异常'
+    msg = f'框架网络层{reason} ({name}'
+    if detail:
+        msg += f': {detail}'
+    msg += f') {method} {endpoint}'
+    return {'message': msg, 'code': -1}
+
+
 class _HttpMixin:
     """HTTP 请求层 Mixin"""
 
@@ -81,7 +101,7 @@ class _HttpMixin:
                     return True, result
                 return True, {}
             except Exception as e:
-                return False, {'message': f'{type(e).__name__}: {e}'.rstrip(': '), 'code': -1}
+                return False, _describe_exception(e, method, endpoint)
         return False, {'message': 'max retries', 'code': -1}
 
     async def get_json(self, endpoint, **kwargs):
