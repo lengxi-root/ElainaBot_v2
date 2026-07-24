@@ -22,7 +22,7 @@ async def _try_fetch_json(session, urls, headers, timeout):
     """依次尝试 URL 列表下载 JSON, 成功返回解析结果, 全部失败返回 None"""
     for url in urls:
         try:
-            async with session.get(url, headers=headers, timeout=timeout, ssl=False, allow_redirects=True) as resp:
+            async with session.get(url, headers=headers, timeout=timeout, allow_redirects=True) as resp:
                 if resp.status == 200:
                     body = await resp.read()
                     if body[:1] in (b'[', b'{'):
@@ -77,7 +77,6 @@ async def _fetch_once(session, url, timeout):
         async with session.get(
             url,
             timeout=_aiohttp.ClientTimeout(total=timeout),
-            ssl=False,
             allow_redirects=True,
             headers={'User-Agent': 'ElainaBot/1.0'},
         ) as resp:

@@ -167,7 +167,6 @@ class FrameworkUpdater:
                         headers=headers,
                         timeout=timeout,
                         allow_redirects=True,
-                        ssl=False,
                     ) as resp:
                         if resp.status == 200:
                             ct = resp.headers.get('content-type', '')
@@ -232,7 +231,6 @@ class FrameworkUpdater:
                     headers=headers,
                     timeout=timeout,
                     allow_redirects=True,
-                    ssl=False,
                 ) as resp,
             ):
                 resp.raise_for_status()

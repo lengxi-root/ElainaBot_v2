@@ -205,7 +205,7 @@ class QQScanLogin:
         trace = aiohttp.TraceConfig()
         trace.on_request_redirect.append(self._sync_response_cookies)
         trace.on_request_end.append(self._sync_response_cookies)
-        conn = aiohttp.TCPConnector(family=socket.AF_INET, ssl=False)
+        conn = aiohttp.TCPConnector(family=socket.AF_INET)
         return aiohttp.ClientSession(
             timeout=_TIMEOUT,
             connector=conn,
