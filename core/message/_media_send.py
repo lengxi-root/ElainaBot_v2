@@ -8,17 +8,12 @@ from core.base.logger import FRAMEWORK, get_logger
 from core.message._http import (
     _MAX_MEDIA_DOWNLOAD,
     MessageType,
+    _msg_seq,
 )
 from core.message.media import _resolve_upload_ep, upload_media_bytes, upload_media_via_url
 from core.message.response import extract_message_id
 
 log = get_logger(FRAMEWORK, '消息发送')
-
-
-def _msg_seq():
-    import random
-
-    return random.randint(10000, 999999)
 
 
 class _MediaSendMixin:

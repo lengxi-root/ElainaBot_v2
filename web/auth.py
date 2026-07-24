@@ -282,9 +282,9 @@ def _cleanup_sessions():
 def create_session(request: web.Request) -> str:
     """创建会话并返回 bearer token"""
     _cleanup_sessions()
-    if len(valid_sessions) > _MAX_SESSIONS:
+    if len(valid_sessions) >= _MAX_SESSIONS:
         oldest = sorted(valid_sessions, key=lambda t: valid_sessions[t]['created'])
-        for t in oldest[: len(valid_sessions) - _MAX_SESSIONS]:
+        for t in oldest[: len(valid_sessions) - _MAX_SESSIONS + 1]:
             valid_sessions.pop(t)
 
     ip = get_real_ip(request)

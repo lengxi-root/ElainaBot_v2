@@ -16,7 +16,7 @@ from web.tools._plugin_mgr.shared import (
     plugins_dir,
     validate_path,
 )
-from web.tools._zipsafe import safe_extractall
+from web.tools._zipsafe import replace_dir_from_zip
 
 _PLUGIN_TEMPLATE = """from core.plugin.decorators import handler
 
@@ -270,32 +270,13 @@ async def handle_upload_plugin(request: web.Request):
                 folder_name = list(top_dirs)[0]
                 safe_folder = re.sub(r'[^\w\u4e00-\u9fa5\-]', '_', folder_name)
                 target_dir = os.path.join(pdir, safe_folder)
-
-                if os.path.exists(target_dir):
-                    backup = target_dir + '.bak'
-                    if os.path.exists(backup):
-                        shutil.rmtree(backup)
-                    shutil.move(target_dir, backup)
-
-                extract_tmp = tempfile.mkdtemp()
-                safe_extractall(zf, extract_tmp)
-                src = os.path.join(extract_tmp, folder_name)
-                shutil.move(src, target_dir)
-                shutil.rmtree(extract_tmp, ignore_errors=True)
+                replace_dir_from_zip(zf, target_dir, top_dir=folder_name)
             else:
                 # zip 内直接是文件 → 用压缩包名字作为插件目录名
                 zip_stem = os.path.splitext(filename)[0]
                 safe_folder = re.sub(r'[^\w\u4e00-\u9fa5\-]', '_', zip_stem)
                 target_dir = os.path.join(pdir, safe_folder)
-
-                if os.path.exists(target_dir):
-                    backup = target_dir + '.bak'
-                    if os.path.exists(backup):
-                        shutil.rmtree(backup)
-                    shutil.move(target_dir, backup)
-
-                os.makedirs(target_dir, exist_ok=True)
-                safe_extractall(zf, target_dir)
+                replace_dir_from_zip(zf, target_dir)
 
             plugin_name = os.path.basename(target_dir)
 
