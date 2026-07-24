@@ -19,7 +19,6 @@
 - [8. Web 面板扩展](#8-web-面板扩展)
 - [9. 配置项与全量环境](#9-配置项与全量环境)
 - [10. 调试与最佳实践](#10-调试与最佳实践)
-- [11. 完整示例](#11-完整示例)
 
 ---
 
@@ -361,7 +360,6 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 | `link` | `str` | — | 快捷方式: 设置后自动设为 `type=0 + data=link` |
 | `show` | `str` | `text` | 点击后显示的文字 (visited_label) |
 | `style` | `int` | `1` | 样式: `0`=灰框 / `1`=蓝框蓝字 / `2`=黑框(PC 端气泡) / `3`=黑框红字 / `4`=蓝底白字 |
-| `enter` | `bool` | — | 已失效，无论填写不填写，最终都会被开放平台删掉 |
 | `reply` | `bool` | — | 点击后作为引用回复发送 |
 | `limit` | `int` | — | 点击次数限制 (`click_limit`)可能无效 |
 | `tips` | `str` | — | 不支持时的提示文字 (`unsupport_tips`) |
@@ -862,66 +860,14 @@ def test_sync(event, match):
 
 ---
 
-## 11. 完整示例
-
-一个具备 **元数据 + 配置 + handler + 生命周期** 的完整插件：
-
-```python
-"""签到插件 — 带积分与配置"""
-
-import random
-import core.plugin.context as _ctx_mod
-from core.plugin.decorators import handler, on_load, on_unload
-from core.base.logger import get_logger, PLUGIN
-
-__plugin_meta__ = {
-    'name': '签到插件',
-    'author': 'YourName',
-    'description': '每日签到 + 积分系统',
-    'version': '1.0.0',
-}
-
-log = get_logger(PLUGIN, '签到')
-ctx = _ctx_mod.ctx
-
-
-@on_load
-async def init():
-    config = ctx.ensure_config({'reward_min': 10, 'reward_max': 100})
-    log.info(f"签到插件已加载, 配置: {config}")
-
-
-@on_unload
-def cleanup():
-    log.info("签到插件已卸载")
-
-
-@handler(r'^签到$', name='每日签到', desc='获取随机积分', ignore_at_check=True)
-async def check_in(event, match):
-    config = ctx.read_config()
-    reward = random.randint(config['reward_min'], config['reward_max'])
-    await event.reply(f"✅ 签到成功! 获得积分: {reward}")
-
-
-@handler(r'^签到设置\s+(\d+)\s+(\d+)$', name='签到设置', desc='设置奖励范围', owner_only=True)
-async def set_reward(event, match):
-    config = ctx.read_config()
-    config['reward_min'], config['reward_max'] = int(match.group(1)), int(match.group(2))
-    ctx.save_config(config)
-    await event.reply("✅ 已更新奖励范围")
-```
-
----
-
 ## 附录: 项目示例插件
 
 | 路径 | 功能 |
 | --- | --- |
 | `plugins/alone/示例插件.py` | 媒体/ark/按钮/交互回调/引用消息/撤回/主动消息/Web 面板综合示例 |
 | `plugins/system/main.py` | 内置系统插件 (信息、管理) |
-| `plugins/game_services/main.py` | 大型插件示例 (子模块组织) |
 
-> **启用/禁用插件**: 在 Web 面板「插件」页切换即可, 状态持久化到 `data/plugins_disabled.json`。旧版以 `.py.ban` 后缀禁用的方式已废弃, 框架启动时会自动迁移为新机制。
+> **启用/禁用插件**: 在 Web 面板「插件」页切换即可, 状态持久化到 `data/plugins_disabled.json`。
 
 ---
 
