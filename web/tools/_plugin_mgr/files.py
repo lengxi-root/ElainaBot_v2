@@ -16,7 +16,17 @@ from web.tools._plugin_mgr.shared import (
     plugins_dir,
     validate_path,
 )
-from web.tools._zipsafe import safe_extractall
+from web.tools._zipsafe import is_within, safe_extractall
+
+# 插件编辑器允许读写的文件类型 (代码 + 常见配置/文本), 阻止读写二进制/其它敏感文件
+_EDITABLE_EXTS = frozenset(
+    {'.py', '.yaml', '.yml', '.json', '.toml', '.ini', '.cfg', '.conf', '.txt', '.md', '.log', '.backup'}
+)
+
+
+def _is_editable(path: str) -> bool:
+    return os.path.splitext(path)[1].lower() in _EDITABLE_EXTS
+
 
 _PLUGIN_TEMPLATE = """from core.plugin.decorators import handler
 
@@ -104,6 +114,8 @@ async def handle_read_plugin(request: web.Request):
     valid, abs_path = validate_path(plugin_path, plugins_dir())
     if not valid or not os.path.isfile(abs_path):
         return web.json_response({'success': False, 'message': '无效路径'}, status=403)
+    if not _is_editable(abs_path):
+        return web.json_response({'success': False, 'message': '不支持的文件类型'}, status=403)
     with open(abs_path, encoding='utf-8') as f:
         content = f.read()
     return web.json_response(
@@ -125,6 +137,8 @@ async def handle_save_plugin(request: web.Request):
     valid, abs_path = validate_path(plugin_path, plugins_dir())
     if not valid:
         return web.json_response({'success': False, 'message': '无效路径'}, status=403)
+    if not _is_editable(abs_path):
+        return web.json_response({'success': False, 'message': '不支持的文件类型'}, status=403)
     if os.path.exists(abs_path):
         shutil.copy2(abs_path, abs_path + '.backup')
     with open(abs_path, 'w', encoding='utf-8') as f:
@@ -145,7 +159,7 @@ async def handle_create_plugin(request: web.Request):
         filename += '.py'
     pdir = plugins_dir()
     target_dir = os.path.join(pdir, directory)
-    if not os.path.abspath(target_dir).startswith(os.path.abspath(pdir)):
+    if not is_within(pdir, target_dir):
         return web.json_response({'success': False, 'message': '无效目录'}, status=403)
     plugin_path = os.path.join(target_dir, filename)
     if os.path.exists(plugin_path):
@@ -170,7 +184,7 @@ async def handle_create_folder(request: web.Request):
         return web.json_response({'success': False, 'message': '缺少文件夹名'}, status=400)
     pdir = plugins_dir()
     target = os.path.join(pdir, parent_dir, folder_name) if parent_dir else os.path.join(pdir, folder_name)
-    if not os.path.abspath(target).startswith(os.path.abspath(pdir)):
+    if not is_within(pdir, target):
         return web.json_response({'success': False, 'message': '无效目录'}, status=403)
     if os.path.exists(target):
         return web.json_response({'success': False, 'message': '文件夹已存在'}, status=409)
@@ -217,7 +231,7 @@ async def handle_upload_plugin(request: web.Request):
     if is_py:
         safe_name = re.sub(r'[^\w\u4e00-\u9fa5\-\.]', '_', filename)
         target_dir = os.path.join(pdir, directory)
-        if not os.path.abspath(target_dir).startswith(os.path.abspath(pdir)):
+        if not is_within(pdir, target_dir):
             return web.json_response({'success': False, 'message': '无效目录'}, status=403)
         os.makedirs(target_dir, exist_ok=True)
 
