@@ -46,9 +46,7 @@ def parse_ptuicb(text: str) -> dict:
     m = _PTUICB_RE.search(text or '')
     if not m:
         return {'code': '', 'url': '', 'msg': ''}
-    args = []
-    for part in m.group(1).split(','):
-        args.append(part.strip().strip("'").strip('"'))
+    args = [part.strip().strip("'").strip('"') for part in m.group(1).split(',')]
     return {
         'code': args[0] if len(args) > 0 else '',
         'url': args[2] if len(args) > 2 else '',
