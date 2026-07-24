@@ -74,11 +74,11 @@ class MySQLPool:
         return self._available and self._pool is not None
 
     async def close(self):
-        if self._pool:
-            self._pool.close()
-            await self._pool.wait_closed()
-            self._pool = None
         self._available = False
+        if self._pool:
+            pool, self._pool = self._pool, None
+            pool.close()
+            await pool.wait_closed()
 
     # ---------- 连接 ----------
 
