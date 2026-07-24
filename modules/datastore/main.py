@@ -25,7 +25,7 @@
 __module_meta__ = {
     'name': '数据存储引擎',
     'description': 'MySQL + Redis 统一数据存储, 异步连接池与完整 CRUD / 缓存操作',
-    'version': '1.0.0',
+    'version': '1.1.0',
     'author': 'ElainaBot',
 }
 

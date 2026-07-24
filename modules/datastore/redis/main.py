@@ -83,11 +83,11 @@ class RedisPool:
         return self._client if self.is_available() else None
 
     async def close(self):
-        if self._client:
-            with contextlib.suppress(Exception):
-                await self._client.aclose()
-            self._client = None
         self._available = False
+        if self._client:
+            client, self._client = self._client, None
+            with contextlib.suppress(Exception):
+                await client.aclose()
 
     # ==================== 内部 ====================
 
