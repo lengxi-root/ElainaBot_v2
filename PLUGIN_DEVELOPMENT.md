@@ -396,12 +396,19 @@ await event.send_to_group(event.group_id, "主动消息同样支持", skip_suffi
 
 ```python
 buttons = [
-    [{'text': '跳转官网', 'link': 'https://example.com'},          # 链接
-     {'text': '点我回调', 'data': 'cb_action_1', 'type': 1},       # 回调
-     {'text': '/帮助', 'type': 2}],                                # 填入输入框
+    # type: 0=跳转链接 / 1=回调 / 2=输入指令 / 4=订阅 (link 等同 type=0)
+    [{'text': '跳转官网', 'link': 'https://example.com'},
+     {'text': '点我回调', 'data': 'cb_action_1', 'type': 1},
+     {'text': '/帮助', 'type': 2}],
+    # style: 0=灰框 / 1=蓝框蓝字(默认) / 2=黑框(PC 端气泡) / 3=黑框红字 / 4=蓝底白字
+    [{'text': '灰框', 'data': 's0', 'type': 1, 'style': 0},
+     {'text': '蓝框蓝字', 'data': 's1', 'type': 1, 'style': 1},
+     {'text': '黑框', 'data': 's2', 'type': 1, 'style': 2},
+     {'text': '黑框红字', 'data': 's3', 'type': 1, 'style': 3},
+     {'text': '蓝底白字', 'data': 's4', 'type': 1, 'style': 4}],
+    # 权限与限制
     [{'text': '仅管理员', 'data': 'admin_only', 'type': 1, 'admin': True},
-     {'text': '点击一次', 'data': 'once', 'type': 1, 'limit': 1},
-     {'text': '黑框红字', 'data': 's3', 'type': 1, 'style': 3}],
+     {'text': '点击一次', 'data': 'once', 'type': 1, 'limit': 1}],
 ]
 await event.reply("📌 多功能按钮面板", buttons=buttons)
 ```
