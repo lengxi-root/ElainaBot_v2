@@ -81,7 +81,7 @@ class _HttpMixin:
                     return True, result
                 return True, {}
             except Exception as e:
-                return False, {'message': str(e), 'code': -1}
+                return False, {'message': f'{type(e).__name__}: {e}'.rstrip(': '), 'code': -1}
         return False, {'message': 'max retries', 'code': -1}
 
     async def get_json(self, endpoint, **kwargs):
