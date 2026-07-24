@@ -409,22 +409,13 @@ buttons = [
     # 权限与限制
     [{'text': '仅管理员', 'data': 'admin_only', 'type': 1, 'admin': True},
      {'text': '点击一次', 'data': 'once', 'type': 1, 'limit': 1}],
+    # 订阅按钮 (type=4): 必须挂在 markdown 消息 (msg_type=2) 上发送
+    [{'text': '订阅', 'show': '已订阅',
+      'subscribe': '102134274_1749040268',  # 机器人Markdown模板 id
+      'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
+      'tips': '请升级QQ版本'}],
 ]
-await event.reply("📌 多功能按钮面板", buttons=buttons)
-```
-
-#### 订阅按钮 (type=4)
-
-订阅按钮**必须挂在 markdown 消息上发送**, 用原生 markdown (`msg_type=2`) 即可, 纯文本消息无法携带订阅按钮:
-
-```python
-buttons = [[{
-    'text': '订阅', 'show': '已订阅',
-    'subscribe': '102134274_1749040268',          # 机器人Markdown模板 id
-    'modal': {'content': '确认订阅？', 'confirm_text': '✔️确认', 'cancel_text': '❌取消'},
-    'tips': '请升级QQ版本',
-}]]
-await event.reply('🔔 订阅推送', buttons=buttons, msg_type=2)
+await event.reply("📌 多功能按钮面板", buttons=buttons, msg_type=2)
 ```
 
 > ⚠️ `subscribe` 必须传入真实存在的模板 ID: 无效模板 (如 `template_id: "0"`) 会导致部分 QQ 客户端点击按钮后闪退。
