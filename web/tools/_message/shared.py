@@ -8,22 +8,8 @@ log = logging.getLogger('ElainaBot.web.message')
 
 _nickname_cache: dict[str, tuple[float, str]] = {}  # {user_id: (ts, name)}
 _CACHE_TIMEOUT = 86400
-_CACHE_MAX = 20000
 _base_dir: str = ''
 _bot_manager: Any = None
-
-
-def _prune_nickname_cache():
-    """满时先清过期, 仍满则淘汰最旧一半, 防止无界增长"""
-    if len(_nickname_cache) < _CACHE_MAX:
-        return
-    now = time.time()
-    for uid in [uid for uid, (ts, _) in _nickname_cache.items() if now - ts >= _CACHE_TIMEOUT]:
-        _nickname_cache.pop(uid, None)
-    if len(_nickname_cache) >= _CACHE_MAX:
-        oldest = sorted(_nickname_cache.items(), key=lambda kv: kv[1][0])
-        for uid, _ in oldest[: len(_nickname_cache) // 2]:
-            _nickname_cache.pop(uid, None)
 
 
 def set_context(base_dir: str, bot_manager=None):
@@ -45,7 +31,6 @@ def _get_nickname(user_id):
                 r = inst.log_service.query_data('SELECT name FROM users WHERE user_id=?', (user_id,))
                 if r and r[0].get('name'):
                     name = r[0]['name']
-                    _prune_nickname_cache()
                     _nickname_cache[user_id] = (time.time(), name)
                     return name
             except Exception as e:
@@ -82,7 +67,6 @@ def _batch_get_nicknames(user_ids):
                         nm = r.get('name')
                         if uid and nm and uid not in out:
                             out[uid] = nm
-                            _prune_nickname_cache()
                             _nickname_cache[uid] = (now, nm)
                 except Exception as e:
                     log.debug(f'批量查询昵称失败: {e}')
