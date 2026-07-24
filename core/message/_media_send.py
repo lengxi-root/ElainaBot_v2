@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from core.base.logger import FRAMEWORK, get_logger
+from core.base.tasks import spawn
 from core.message._http import (
     _MAX_MEDIA_DOWNLOAD,
     MessageType,
@@ -32,7 +33,7 @@ class _MediaSendMixin:
         if delay and data:
             mid = extract_message_id(data)
             if mid:
-                asyncio.create_task(self._auto_recall(event, mid, delay))
+                spawn(self._auto_recall(event, mid, delay))
 
     async def download_media(self, url: str):
         try:

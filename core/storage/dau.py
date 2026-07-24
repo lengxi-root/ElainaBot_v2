@@ -9,6 +9,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from core.base.logger import FRAMEWORK, get_logger
+from core.base.tasks import spawn
 from core.storage._daily_base import DailyScanService
 from core.storage._schema import DAU_TABLE_SQL
 from core.storage.lifecycle_stats import compute_lifecycle_counts
@@ -35,7 +36,7 @@ class DAUService(DailyScanService):
             return
         self._running = True
         self._task = asyncio.create_task(self._scheduler_loop())
-        asyncio.create_task(self._backfill_missing())
+        spawn(self._backfill_missing())
         log.info(f'已启动 [每日 {self._schedule_hour:02d}:{self._schedule_minute:02d}]')
 
     async def _backfill_missing(self):

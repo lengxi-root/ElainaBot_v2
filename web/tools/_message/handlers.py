@@ -16,6 +16,7 @@ from urllib.parse import quote
 from aiohttp import BodyPartReader, web
 
 import web.tools._message.shared as _shared
+from core.base.tasks import spawn
 from web.tools._message.log_utils import (
     _build_display,
     _log_send_error,
@@ -160,7 +161,7 @@ async def handle_get_chats(request: web.Request):
         chats = cached[1]
         if time.time() - cached[0] >= _CHAT_LIST_TTL and cache_key not in _chat_refreshing:
             _chat_refreshing.add(cache_key)
-            asyncio.get_event_loop().create_task(_refresh_chat_list(cache_key, chat_type, appid_filter))
+            spawn(_refresh_chat_list(cache_key, chat_type, appid_filter))
     else:
         # 首次无缓存, 同类请求合并等待一次构建
         async with _chat_list_lock:
