@@ -290,6 +290,10 @@ class Application(EventHandlerMixin):
     async def shutdown(self):
         log.info('正在关闭...')
 
+        if self._restart_requested:
+            # 重启时整体关闭限时 2 秒, 超时强制重新拉起
+            threading.Thread(target=lambda: (time.sleep(2), relaunch()), daemon=True).start()
+
         if self._plugin_manager:
             self._plugin_manager.stop_watcher()
 
@@ -317,10 +321,6 @@ class Application(EventHandlerMixin):
             await self._http_server.stop(timeout=5)
 
         log.info('已关闭')
-
-        if self._restart_requested:
-            # 兜底: 关闭后 2 秒内未退出 (残留线程/执行器卡住) 则强制重启
-            threading.Thread(target=lambda: (time.sleep(2), relaunch()), daemon=True).start()
 
     # ===== Webhook / Health (桥接到 manager 兼容) =====
 
