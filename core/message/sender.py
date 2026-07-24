@@ -194,11 +194,7 @@ class MessageSender(_HttpMixin, _MediaSendMixin, _SenderLogMixin):
         return data
 
     async def reply_card(self, event, card_type='tuwen', data=None, content='', *, auto_delete_time=None):
-        """回复卡片消息 (msg_type=8), card_type 可自定义以支持新卡片类型.
-
-        data 为 dict 时原样作为 card.content;
-        card_type='tuwen' 时也可传 (标题, 描述, 图片URL, 跳转URL) 元组/列表简写
-        """
+        """回复卡片消息 (msg_type=8); data 为 dict 时原样作为 card.content, card_type='tuwen' 时也可传 (标题,描述,图片URL,跳转URL) 元组简写"""
         if isinstance(data, tuple | list) and card_type == 'tuwen':
             title, description, pic_url, url = (list(data) + [''] * 4)[:4]
             data = {'title': title or '', 'description': description or '',

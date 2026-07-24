@@ -383,8 +383,7 @@ async def handle_send_message(request: web.Request):
         if not message_reference_id and quote_message_id:
             message_reference_id = _lookup_reference_id(bot, chat_type, chat_id, quote_message_id)
 
-        # 发送方式: default=全量群主动/普通群被动, active=主动, passive=被动,
-        # custom_msg_id/custom_event_id=手动指定 ID
+        # 发送方式: default=全量群主动/普通群被动, active=主动, passive=被动, custom_msg_id/custom_event_id=手动指定 ID
         event_id = ''
         if send_mode == 'active':
             msg_id = ''
