@@ -37,10 +37,10 @@ class AsyncHttpClient:
         *,
         base_url='',
         timeout=30.0,
-        max_connections=500,
+        max_connections=200,
         max_keepalive=100,
         keepalive_expiry=20.0,
-        pool_timeout=30.0,
+        pool_timeout=10.0,
         follow_redirects=True,
     ):
         self._is_httpx = HAS_HTTPX
