@@ -83,7 +83,12 @@ class TokenManager:
     async def get_client(self):
         """获取 HTTP 客户端 (延迟创建, Sender 共享此实例)"""
         if self._client is None or self._client.is_closed:
-            self._client = AsyncHttpClient(base_url=self._api_base, timeout=30.0)
+            self._client = AsyncHttpClient(
+                base_url=self._api_base,
+                timeout=30.0,
+                max_connections=None,
+                max_keepalive=100,
+            )
         return self._client
 
     _ensure_client = get_client  # 内部兼容
