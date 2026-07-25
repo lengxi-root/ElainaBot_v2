@@ -9,6 +9,7 @@ import pathlib
 import shutil
 import ssl
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
@@ -60,6 +61,14 @@ def _resolve_env() -> str:
     return 'dev' if _is_debugger() else 'prod'
 
 
+async def _amain():
+    # 扩大默认线程池: getaddrinfo (DNS) 等阻塞调用在高并发建连时不至于排队拖垮全局网络
+    asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=64, thread_name_prefix='asyncio-default'))
+    from core.application import Application
+
+    return await Application().start()
+
+
 def main():
     _env = _resolve_env()
 
@@ -83,11 +92,11 @@ def main():
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-    from core.application import Application, relaunch
+    from core.application import relaunch
 
     restart = False
     with contextlib.suppress(KeyboardInterrupt):
-        restart = asyncio.run(Application().start())
+        restart = asyncio.run(_amain())
     if restart:
         relaunch()
 

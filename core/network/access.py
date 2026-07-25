@@ -87,7 +87,8 @@ class TokenManager:
                 base_url=self._api_base,
                 timeout=30.0,
                 max_connections=None,
-                max_keepalive=100,
+                max_keepalive=200,
+                keepalive_expiry=120.0,
             )
         return self._client
 
