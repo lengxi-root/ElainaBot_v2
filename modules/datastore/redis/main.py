@@ -7,7 +7,9 @@
 完整操作: 基础 Key / Hash / List / Set / Sorted Set / Pipeline / 管理命令
 """
 
+import asyncio
 import contextlib
+import time
 
 _DEFAULTS = {
     'host': '127.0.0.1',
@@ -39,11 +41,12 @@ _COMMENTS = {
 class _SafePipeline:
     """Pipeline 代理: execute 失败时记录日志并按命令数返回 None 占位, 不向调用方抛异常"""
 
-    __slots__ = ('_pipe', '_log')
+    __slots__ = ('_pipe', '_log', '_owner')
 
-    def __init__(self, pipe, log):
+    def __init__(self, pipe, log, owner=None):
         self._pipe = pipe
         self._log = log
+        self._owner = owner
 
     def __getattr__(self, name):
         return getattr(self._pipe, name)
@@ -58,24 +61,39 @@ class _SafePipeline:
     async def execute(self, raise_on_error=True):
         n = len(self._pipe.command_stack)
         try:
-            return await self._pipe.execute(raise_on_error=raise_on_error)
+            result = await self._pipe.execute(raise_on_error=raise_on_error)
+            if self._owner is not None:
+                self._owner._mark_ok()
+            return result
         except Exception as e:
             self._log.warning(f'PIPELINE 执行失败 ({n}条命令): {e}')
             with contextlib.suppress(Exception):
                 await self._pipe.reset()
+            if self._owner is not None and _is_pool_exhausted(e):
+                await self._owner._on_pool_exhausted()
             return [None] * n
+
+
+def _is_pool_exhausted(e):
+    return 'No connection available' in str(e)
 
 
 class RedisPool:
     """Redis 异步客户端封装 — 完整能力"""
 
-    __slots__ = ('_cfg', '_client', '_available', '_log')
+    # 连接池持续耗尽超过此时长后重建连接池自愈 (秒)
+    _EXHAUST_GRACE = 60
+
+    __slots__ = ('_cfg', '_client', '_available', '_log',
+                 '_exhausted_since', '_reinit_lock')
 
     def __init__(self, cfg, log):
         self._cfg = cfg
         self._client = None
         self._available = False
         self._log = log
+        self._exhausted_since = None
+        self._reinit_lock = asyncio.Lock()
 
     async def initialize(self):
         try:
@@ -125,10 +143,52 @@ class RedisPool:
         if not self.is_available():
             return default
         try:
-            return await coro
+            result = await coro
+            self._mark_ok()
+            return result
         except Exception as e:
             self._log.warning(f'{op} 失败 [{key}]: {e}' if key else f'{op} 失败: {e}')
+            if _is_pool_exhausted(e):
+                await self._on_pool_exhausted()
             return default
+
+    def _mark_ok(self):
+        self._exhausted_since = None
+
+    def pool_stats(self):
+        """连接池状态 (诊断用)"""
+        try:
+            pool = self._client.connection_pool
+            return (f'in_use={len(pool._in_use_connections)} '
+                    f'available={len(pool._available_connections)} '
+                    f'max={pool.max_connections}')
+        except Exception:
+            return 'unknown'
+
+    async def _on_pool_exhausted(self):
+        """连接池耗尽处置: 记录池状态; 持续耗尽超过 _EXHAUST_GRACE 秒则重建连接池,
+        回收因异常/取消未归还的泄漏连接"""
+        now = time.monotonic()
+        if self._exhausted_since is None:
+            self._exhausted_since = now
+            self._log.error(f'Redis 连接池耗尽: {self.pool_stats()}')
+            return
+        if now - self._exhausted_since < self._EXHAUST_GRACE or self._reinit_lock.locked():
+            return
+        async with self._reinit_lock:
+            if self._exhausted_since is None \
+                    or time.monotonic() - self._exhausted_since < self._EXHAUST_GRACE:
+                return
+            self._log.error(
+                f'Redis 连接池持续耗尽超 {self._EXHAUST_GRACE}s, '
+                f'重建连接池自愈: {self.pool_stats()}')
+            self._exhausted_since = None
+            self._available = False
+            old, self._client = self._client, None
+            if old is not None:
+                with contextlib.suppress(Exception):
+                    await old.aclose()
+            await self.initialize()
 
     # ==================== 基础操作 ====================
 
@@ -325,7 +385,7 @@ class RedisPool:
         """获取管道对象 (async with pool.pipeline() as pipe), execute 失败返回 None 占位列表"""
         if not self.is_available():
             return None
-        return _SafePipeline(self._client.pipeline(transaction=transaction), self._log)
+        return _SafePipeline(self._client.pipeline(transaction=transaction), self._log, owner=self)
 
     async def flushdb(self, asynchronous=False):
         """清空当前数据库"""
