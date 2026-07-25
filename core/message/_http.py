@@ -40,8 +40,6 @@ _DEFAULT_MAX_CONNECTIONS = 200
 
 
 class _NullSem:
-    """无限制时的空信号量"""
-
     async def __aenter__(self):
         return self
 
@@ -57,7 +55,7 @@ def _msg_seq():
 
 
 def _is_retryable(e):
-    """超时/连接类异常可安全重试 (payload 含 msg_seq, 平台会去重); 本地连接池耗尽 (PoolTimeout) 重试只会加剧拥塞, 不重试"""
+    """超时/连接类异常可安全重试 (payload 含 msg_seq, 平台会去重)"""
     lowered = f'{type(e).__name__} {e}'.lower()
     if 'pooltimeout' in lowered:
         return False
@@ -98,7 +96,7 @@ class _HttpMixin:
         self._client = None
 
     def _get_send_sem(self):
-        """发送全局并发信号量 (每个机器人一个), 超出上限的请求排队而非挤爆连接池"""
+        """发送并发信号量 (每个机器人一个)"""
         if self._send_sem is None:
             net = cfg.get('settings', 'network') or {}
             limit = int(net.get('max_concurrency', net.get('max_connections', _DEFAULT_MAX_CONNECTIONS)) or 0)
