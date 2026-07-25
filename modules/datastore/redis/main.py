@@ -14,8 +14,8 @@ _DEFAULTS = {
     'port': 6379,
     'password': '',
     'db': 0,
-    'max_connections': 50,
-    'pool_timeout': 10,
+    'max_connections': 200,
+    'pool_timeout': 30,
     'socket_timeout': 5,
     'socket_connect_timeout': 5,
     'health_check_interval': 30,
@@ -27,13 +27,43 @@ _COMMENTS = {
     'port': 'Redis 端口号',
     'password': '连接密码, 无密码留空',
     'db': '数据库编号 (0-15)',
-    'max_connections': '最大连接数',
+    'max_connections': '最大连接数 (过小会在并发高峰耗尽连接池)',
     'pool_timeout': '连接池耗尽时等待空闲连接的超时 (秒)',
     'socket_timeout': '读写超时 (秒)',
     'socket_connect_timeout': '连接超时 (秒)',
     'health_check_interval': '健康检查间隔 (秒)',
     'decode_responses': '是否自动解码响应为字符串',
 }
+
+
+class _SafePipeline:
+    """Pipeline 代理: execute 失败时记录日志并按命令数返回 None 占位, 不向调用方抛异常"""
+
+    __slots__ = ('_pipe', '_log')
+
+    def __init__(self, pipe, log):
+        self._pipe = pipe
+        self._log = log
+
+    def __getattr__(self, name):
+        return getattr(self._pipe, name)
+
+    async def __aenter__(self):
+        await self._pipe.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        return await self._pipe.__aexit__(exc_type, exc_val, exc_tb)
+
+    async def execute(self, raise_on_error=True):
+        n = len(self._pipe.command_stack)
+        try:
+            return await self._pipe.execute(raise_on_error=raise_on_error)
+        except Exception as e:
+            self._log.warning(f'PIPELINE 执行失败 ({n}条命令): {e}')
+            with contextlib.suppress(Exception):
+                await self._pipe.reset()
+            return [None] * n
 
 
 class RedisPool:
@@ -60,8 +90,8 @@ class RedisPool:
                 port=int(self._cfg.get('port', 6379)),
                 password=password,
                 db=int(self._cfg.get('db', 0)),
-                max_connections=int(self._cfg.get('max_connections', 50)),
-                timeout=int(self._cfg.get('pool_timeout', 10)),
+                max_connections=int(self._cfg.get('max_connections', 200)),
+                timeout=int(self._cfg.get('pool_timeout', 30)),
                 socket_timeout=int(self._cfg.get('socket_timeout', 5)),
                 socket_connect_timeout=int(self._cfg.get('socket_connect_timeout', 5)),
                 health_check_interval=int(self._cfg.get('health_check_interval', 30)),
@@ -292,10 +322,10 @@ class RedisPool:
     # ==================== Pipeline / 管理 ====================
 
     def pipeline(self, transaction=True):
-        """获取管道对象 (async with pool.pipeline() as pipe)"""
+        """获取管道对象 (async with pool.pipeline() as pipe), execute 失败返回 None 占位列表"""
         if not self.is_available():
             return None
-        return self._client.pipeline(transaction=transaction)
+        return _SafePipeline(self._client.pipeline(transaction=transaction), self._log)
 
     async def flushdb(self, asynchronous=False):
         """清空当前数据库"""
