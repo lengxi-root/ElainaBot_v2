@@ -670,7 +670,8 @@ class ImageHosting:
                              timeout=30)
 
             if resp.status_code < 300:
-                return resource_url
+                # OSS 默认域名直链会强制下载, 附加图片处理参数使其内联显示
+                return f'{resource_url}?x-oss-process=image/format,jpg'
             return (False, f'{module} 上传失败 (HTTP {resp.status_code})')
         except Exception as e:
             return (False, str(e))
