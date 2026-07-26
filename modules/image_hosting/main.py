@@ -144,7 +144,7 @@ _COMMENTS = {
         '__desc__': 'QQ 分片文件图床 (官方分片上传, 返回 COS 预签名直链与 ttl)',
         'enabled': '是否启用 QQ 分片文件图床 (默认开启)',
         'target_type': '默认上传作用域类型: group(群) / user(用户)',
-        'target_id': '默认上传作用域 ID (群 openid 或用户 openid), 也可调用时传入',
+        'target_id': '默认上传作用域 ID (群 openid 或用户 openid), 留空则自动从数据库获取',
     },
     'chatglm': {
         '__desc__': '智谱 ChatGLM 图床 (免费, 无需配置)',
@@ -507,15 +507,16 @@ class ImageHosting:
 
         file_type: 1图片 / 2视频 / 3语音 (raw_url 仅这三类返回, 文件类型4无直链)
         sender: MessageSender 实例; 不传时自动取第一个在线机器人
-        target_id / target_type: 上传作用域 (群/用户 openid), 不传时用配置默认值
+        target_id / target_type: 上传作用域 (群/用户 openid), 不传时用配置默认值, 未配置则自动从数据库获取
         返回: {'success', 'url', 'ttl', 'file_info', 'file_uuid', 'file_size'}
         """
         qf = self._cfg.get('qq_file', {})
         if not qf.get('enabled'):
             return (False, 'QQ分片文件图床未开启, 请在 image_hosting 模块配置中启用')
-        target_id = target_id or qf.get('target_id', '')
+        target_type = target_type or qf.get('target_type', 'group')
+        target_id = target_id or qf.get('target_id', '') or await _auto_qq_file_target(target_type)
         if not target_id:
-            return (False, 'QQ分片文件图床未配置 target_id, 请在配置中填写或调用时传入')
+            return (False, 'QQ分片文件图床无可用 target_id (未配置且自动获取失败)')
         if not isinstance(file_data, bytes) or not file_data:
             return (False, '无效的文件数据')
         if sender is None:
@@ -523,7 +524,7 @@ class ImageHosting:
         if sender is None:
             return (False, '无可用机器人实例')
 
-        kind = 'groups' if (target_type or qf.get('target_type', 'group')) == 'group' else 'users'
+        kind = 'groups' if target_type == 'group' else 'users'
         scope = f'/v2/{kind}/{target_id}'
 
         from core.message.media import compute_file_hashes
@@ -723,6 +724,26 @@ class ImageHosting:
 
 
 # ==================== 辅助函数 ====================
+
+
+async def _auto_qq_file_target(target_type):
+    """未配置 target_id 时自动从数据库取一个群/用户 openid"""
+    try:
+        from core.bot.manager import _bot_manager_ref
+        if not (_bot_manager_ref and _bot_manager_ref._bots):
+            return ''
+        ls = getattr(next(iter(_bot_manager_ref._bots.values())), 'log_service', None)
+        if ls is None:
+            return ''
+        if target_type == 'group':
+            row = await ls.db_fetch_one(
+                'SELECT group_id FROM groups_users WHERE in_group=1 ORDER BY rowid DESC LIMIT 1')
+            return (row or {}).get('group_id', '') or ''
+        row = await ls.db_fetch_one('SELECT user_id FROM members ORDER BY rowid DESC LIMIT 1')
+        return (row or {}).get('user_id', '') or ''
+    except Exception as e:
+        log.debug(f'自动获取 qq_file target_id 失败: {e}')
+        return ''
 
 
 def _get_any_sender():
