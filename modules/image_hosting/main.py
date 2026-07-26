@@ -6,6 +6,7 @@
 用法 (插件中):
     hosting = bot.module_manager.get("image_hosting")
     if hosting:
+        url = await hosting.upload_any(image_bytes, "test.png")  # 自动选首个可用图床
         url = await hosting.upload_cos(image_bytes, "test.png", user_id="abc")
         url = await hosting.upload_bilibili(image_bytes)
         url = await hosting.upload_qq(image_bytes)
@@ -269,6 +270,35 @@ class ImageHosting:
             'xingye': self.is_xingye_available(),
             'nature': self.is_nature_available(),
         }
+
+    # ==================== 通用上传 ====================
+
+    async def upload_any(self, image_bytes, filename='image.png', *, token_manager=None, sender=None):
+        """按开启状态依次尝试各图床上传, 返回首个成功的 URL; 全部失败返回 None
+
+        token_manager: QQ频道图床需要; sender: QQ分片文件图床可选
+        """
+        status = self.status()
+        uploaders = (
+            ('cos', lambda: self.upload_cos_url(image_bytes, filename)),
+            ('bilibili', lambda: self.upload_bilibili(image_bytes)),
+            ('qq_channel', lambda: self.upload_qq(image_bytes, token_manager)),
+            ('chatglm', lambda: self.upload_chatglm(image_bytes)),
+            ('xingye', lambda: self.upload_xingye(image_bytes)),
+            ('nature', lambda: self.upload_nature(image_bytes)),
+            ('qq_file', lambda: self.upload_qq_file_url(image_bytes, file_name=filename, sender=sender)),
+        )
+        for name, fn in uploaders:
+            if not status.get(name):
+                continue
+            try:
+                result = await fn()
+            except Exception as e:
+                log.debug(f'图床 {name} 上传失败: {e}')
+                continue
+            if isinstance(result, str) and result.startswith('http'):
+                return result
+        return None
 
     # ==================== COS 上传 ====================
 
