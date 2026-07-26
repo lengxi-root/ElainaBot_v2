@@ -5,7 +5,12 @@ from datetime import datetime
 from io import BytesIO
 
 from ._common import (
-    DIM_PATTERN, BaseBed, get_image_dimensions, guess_content_type, log, run_sync,
+    DIM_PATTERN,
+    BaseBed,
+    get_image_dimensions,
+    guess_content_type,
+    log,
+    run_sync,
 )
 
 
