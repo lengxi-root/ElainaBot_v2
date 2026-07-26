@@ -34,7 +34,7 @@
         enabled: false
         channel_id: ""
     qq_file:
-        enabled: false
+        enabled: true
         target_type: "group"
         target_id: ""
     chatglm:
@@ -103,7 +103,7 @@ _DEFAULTS = {
         'channel_id': '',
     },
     'qq_file': {
-        'enabled': False,
+        'enabled': True,
         'target_type': 'group',
         'target_id': '',
     },
@@ -147,9 +147,9 @@ _COMMENTS = {
     },
     'qq_file': {
         '__desc__': 'QQ 分片文件图床 (官方分片上传, 返回 COS 预签名直链与 ttl)',
-        'enabled': '是否启用 QQ 分片文件图床',
-        'target_type': '上传作用域类型: group(群) / user(用户)',
-        'target_id': '上传作用域 ID (群 openid 或用户 openid)',
+        'enabled': '是否启用 QQ 分片文件图床 (默认开启)',
+        'target_type': '默认上传作用域类型: group(群) / user(用户)',
+        'target_id': '默认上传作用域 ID (群 openid 或用户 openid), 也可调用时传入',
     },
     'chatglm': {
         '__desc__': '智谱 ChatGLM 图床 (免费, 无需配置)',
@@ -258,8 +258,7 @@ class ImageHosting:
         return qq.get('enabled') and qq.get('channel_id')
 
     def is_qq_file_available(self):
-        qf = self._cfg.get('qq_file', {})
-        return bool(qf.get('enabled') and qf.get('target_id'))
+        return bool(self._cfg.get('qq_file', {}).get('enabled'))
 
     def is_chatglm_available(self):
         return self._cfg.get('chatglm', {}).get('enabled', False)
@@ -488,19 +487,20 @@ class ImageHosting:
 
     # ==================== QQ 分片文件图床 ====================
 
-    async def upload_qq_file(self, file_data, file_type=1, *, file_name=None, sender=None):
+    async def upload_qq_file(self, file_data, file_type=1, *, file_name=None, sender=None, target_id=None, target_type=None):
         """QQ 分片文件图床: 走官方分片上传流程, 返回上传结果 dict 或 (False, 原因)
 
         file_type: 1图片 / 2视频 / 3语音 (raw_url 仅这三类返回, 文件类型4无直链)
         sender: MessageSender 实例; 不传时自动取第一个在线机器人
+        target_id / target_type: 上传作用域 (群/用户 openid), 不传时用配置默认值
         返回: {'success', 'url', 'ttl', 'file_info', 'file_uuid', 'file_size'}
         """
         qf = self._cfg.get('qq_file', {})
         if not qf.get('enabled'):
             return (False, 'QQ分片文件图床未开启, 请在 image_hosting 模块配置中启用')
-        target_id = qf.get('target_id', '')
+        target_id = target_id or qf.get('target_id', '')
         if not target_id:
-            return (False, 'QQ分片文件图床未配置 target_id')
+            return (False, 'QQ分片文件图床未配置 target_id, 请在配置中填写或调用时传入')
         if not isinstance(file_data, bytes) or not file_data:
             return (False, '无效的文件数据')
         if sender is None:
@@ -508,7 +508,7 @@ class ImageHosting:
         if sender is None:
             return (False, '无可用机器人实例')
 
-        kind = 'groups' if qf.get('target_type', 'group') == 'group' else 'users'
+        kind = 'groups' if (target_type or qf.get('target_type', 'group')) == 'group' else 'users'
         scope = f'/v2/{kind}/{target_id}'
 
         from core.message.media import compute_file_hashes
@@ -573,9 +573,11 @@ class ImageHosting:
                 with contextlib.suppress(Exception):
                     os.unlink(tmp_path)
 
-    async def upload_qq_file_url(self, file_data, file_type=1, *, file_name=None, sender=None):
+    async def upload_qq_file_url(self, file_data, file_type=1, *, file_name=None, sender=None, target_id=None, target_type=None):
         """只返回 raw_url 字符串, 失败返回 (False, 原因)"""
-        result = await self.upload_qq_file(file_data, file_type, file_name=file_name, sender=sender)
+        result = await self.upload_qq_file(
+            file_data, file_type, file_name=file_name, sender=sender,
+            target_id=target_id, target_type=target_type)
         if isinstance(result, tuple):
             return result
         return result['url'] if result.get('url') else (False, '未返回 raw_url (文件类型4无直链)')
