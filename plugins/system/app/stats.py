@@ -45,7 +45,6 @@ async def _upload_dau_image(bot, image_bytes):
         ('bilibili', lambda: hosting.upload_bilibili(image_bytes)),
         ('qq_channel', lambda: hosting.upload_qq(image_bytes, bot.token_manager)),
         ('chatglm', lambda: hosting.upload_chatglm(image_bytes)),
-        ('ukaka', lambda: hosting.upload_ukaka(image_bytes)),
         ('xingye', lambda: hosting.upload_xingye(image_bytes)),
         ('nature', lambda: hosting.upload_nature(image_bytes)),
     )

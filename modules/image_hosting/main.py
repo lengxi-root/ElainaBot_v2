@@ -1,4 +1,4 @@
-"""可选模块: 统一图床服务 (腾讯云COS / B站 / QQ频道 / QQ分片文件 / ChatGLM / Ukaka / 星野 / Nature)
+"""可选模块: 统一图床服务 (腾讯云COS / B站 / QQ频道 / QQ分片文件 / ChatGLM / 星野 / Nature)
 
 各图床可在配置中独立开关, 未开启或未配置时返回明确提示。
 同步 SDK 通过 run_in_executor 包装为异步 API。
@@ -11,7 +11,6 @@
         url = await hosting.upload_qq(image_bytes)
         result = await hosting.upload_qq_file(file_bytes, file_type=1)  # {'url', 'ttl', ...}
         url = await hosting.upload_chatglm(image_bytes)
-        url = await hosting.upload_ukaka(image_bytes)
         url = await hosting.upload_xingye(image_bytes)
         url = await hosting.upload_nature(image_bytes)
 
@@ -39,17 +38,15 @@
         target_id: ""
     chatglm:
         enabled: false
-    ukaka:
-        enabled: false
     xingye:
         enabled: false
     nature:
-        enabled: false
+        enabled: true
 """
 
 __module_meta__ = {
     'name': '图床服务',
-    'description': '统一图床上传 (COS / B站 / QQ频道 / QQ分片文件 / ChatGLM / Ukaka / 星野 / Nature)',
+    'description': '统一图床上传 (COS / B站 / QQ频道 / QQ分片文件 / ChatGLM / 星野 / Nature)',
     'version': '1.3.0',
     'author': 'ElainaBot',
 }
@@ -110,14 +107,11 @@ _DEFAULTS = {
     'chatglm': {
         'enabled': False,
     },
-    'ukaka': {
-        'enabled': False,
-    },
     'xingye': {
         'enabled': False,
     },
     'nature': {
-        'enabled': False,
+        'enabled': True,
     },
 }
 
@@ -155,17 +149,13 @@ _COMMENTS = {
         '__desc__': '智谱 ChatGLM 图床 (免费, 无需配置)',
         'enabled': '是否启用 ChatGLM 图床',
     },
-    'ukaka': {
-        '__desc__': 'Ukaka 图床 (免费, 无需配置)',
-        'enabled': '是否启用 Ukaka 图床',
-    },
     'xingye': {
         '__desc__': '星野图床 (免费, 无需配置)',
         'enabled': '是否启用星野图床',
     },
     'nature': {
-        '__desc__': 'Nature 图床 (腾讯 COS 直传, 密钥内置, 仅图片)',
-        'enabled': '是否启用 Nature 图床',
+        '__desc__': 'Nature 图床 (腾讯 COS 直传, 密钥内置, 仅图片; 临时图片可用, 不建议持久化)',
+        'enabled': '是否启用 Nature 图床 (默认开启)',
     },
 }
 
@@ -192,7 +182,7 @@ async def teardown():
 # ==================== 统一图床服务 ====================
 
 class ImageHosting:
-    """统一图床上传 (COS / B站 / QQ频道 / ChatGLM / Ukaka / 星野 / Nature)"""
+    """统一图床上传 (COS / B站 / QQ频道 / QQ分片文件 / ChatGLM / 星野 / Nature)"""
 
     __slots__ = ('_cfg', '_ctx', '_cos_client', '_cos_available', '_sign_url', '_sign_origin', '_ua')
 
@@ -218,7 +208,6 @@ class ImageHosting:
         status.append(f"QQ频道={'✅' if qq_cfg.get('enabled') and qq_cfg.get('channel_id') else '❌'}")
         status.append(f"QQ分片文件={'✅' if self.is_qq_file_available() else '❌'}")
         status.append(f"ChatGLM={'✅' if self._cfg.get('chatglm', {}).get('enabled') else '❌'}")
-        status.append(f"Ukaka={'✅' if self._cfg.get('ukaka', {}).get('enabled') else '❌'}")
         status.append(f"星野={'✅' if self._cfg.get('xingye', {}).get('enabled') else '❌'}")
         status.append(f"Nature={'✅' if self._cfg.get('nature', {}).get('enabled') else '❌'}")
         log.info(f"图床状态: {' | '.join(status)}")
@@ -263,9 +252,6 @@ class ImageHosting:
     def is_chatglm_available(self):
         return self._cfg.get('chatglm', {}).get('enabled', False)
 
-    def is_ukaka_available(self):
-        return self._cfg.get('ukaka', {}).get('enabled', False)
-
     def is_xingye_available(self):
         return self._cfg.get('xingye', {}).get('enabled', False)
 
@@ -280,7 +266,6 @@ class ImageHosting:
             'qq_channel': bool(self.is_qq_available()),
             'qq_file': self.is_qq_file_available(),
             'chatglm': self.is_chatglm_available(),
-            'ukaka': self.is_ukaka_available(),
             'xingye': self.is_xingye_available(),
             'nature': self.is_nature_available(),
         }
@@ -614,17 +599,6 @@ class ImageHosting:
         except Exception as e:
             return (False, str(e))
 
-    # ==================== Ukaka 图床 ====================
-
-    async def upload_ukaka(self, image_data):
-        """上传到Ukaka图床, 返回 URL 字符串或 (False, 原因)"""
-        if not self.is_ukaka_available():
-            return (False, 'Ukaka 图床未开启, 请在 image_hosting 模块配置中启用')
-        if not isinstance(image_data, bytes) or len(image_data) > 20 * 1024 * 1024:
-            return (False, '无效数据或超过20MB限制')
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(_executor, self._upload_signed_sync, image_data, 'ukaka')
-
     # ==================== 星野图床 ====================
 
     async def upload_xingye(self, image_data):
@@ -637,7 +611,7 @@ class ImageHosting:
         return await loop.run_in_executor(_executor, self._upload_signed_sync, image_data, 'xingye')
 
     def _upload_signed_sync(self, image_data, module):
-        """Ukaka / 星野 共用签名上传逻辑"""
+        """星野签名上传逻辑"""
         try:
             import httpx
             mime = _detect_mime(image_data)
@@ -660,19 +634,10 @@ class ImageHosting:
             if not upload_url or not resource_url:
                 return (False, f'{module} 签名返回数据不完整')
 
-            if module == 'xingye':
-                ct = (sign_data.get('header') or {}).get('Content-Type', mime)
-                resp = httpx.put(upload_url, content=image_data,
-                                 headers={'Content-Type': ct, 'User-Agent': self._ua},
-                                 timeout=30)
-            else:
-                body = sign_data.get('body', {})
-                files_dict = {}
-                data_dict = {k: str(v) for k, v in body.items()
-                             if k != 'file' and v is not None and v != ''}
-                files_dict['file'] = (filename, image_data, mime)
-                resp = httpx.post(upload_url, data=data_dict, files=files_dict,
-                                  headers={'User-Agent': self._ua}, timeout=30)
+            ct = (sign_data.get('header') or {}).get('Content-Type', mime)
+            resp = httpx.put(upload_url, content=image_data,
+                             headers={'Content-Type': ct, 'User-Agent': self._ua},
+                             timeout=30)
 
             if resp.status_code < 300:
                 return resource_url
