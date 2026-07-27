@@ -51,7 +51,7 @@ _NULL_SEM = _NullSem()
 
 
 def _msg_seq():
-    return random.randint(10000, 999999)
+    return random.randint(1000000, 9999999)
 
 
 def _is_retryable(e):
