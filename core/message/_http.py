@@ -36,7 +36,6 @@ _TOKEN_EXPIRED_CODE = 11244
 _MAX_MEDIA_DOWNLOAD = 100 * 1024 * 1024  # 100MB 下载上限, 防止 OOM
 _NET_MAX_RETRIES = 2
 _NET_RETRY_DELAY = 0.5  # 秒, 按次数线性递增
-_RATE_LIMIT_CODE = 100017
 _RATE_LIMIT_ERR_CODE = 40023001
 _RATE_LIMIT_RETRY_DELAY = 1.0  # 秒
 _VIOLATION_CODE = 40034006  # 消息内容违规
@@ -62,7 +61,7 @@ def _is_rate_limited(data):
     """判断是否接口频率限制错误"""
     if not isinstance(data, dict):
         return False
-    return data.get('code') == _RATE_LIMIT_CODE or data.get('err_code') == _RATE_LIMIT_ERR_CODE
+    return data.get('err_code') == _RATE_LIMIT_ERR_CODE
 
 
 def _is_violation(data):
