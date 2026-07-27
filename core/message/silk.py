@@ -3,10 +3,11 @@
 本地语音发送前默认转换为 silk v3 (tencent 变体)。
 
 解码链 (按可用性自动选择, 任一可用即可):
-    1. 系统 PATH 中的 ffmpeg
-    2. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
-    3. PyAV (pip 包 av, 自带 FFmpeg 库)
-    4. 标准库 wave (零依赖, 仅支持 16bit WAV)
+    1. soundfile (pip 包, 自带 libsndfile, 支持 WAV/MP3/OGG/FLAC 等, 不依赖 ffmpeg)
+    2. 系统 PATH 中的 ffmpeg
+    3. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
+    4. PyAV (pip 包 av, 自带 FFmpeg 库)
+    5. 标准库 wave (零依赖, 仅支持 16bit WAV)
 
 编码使用 pilk (可选依赖, pip install pilk); 未安装时语音原样发送不做转换。
 """
@@ -72,6 +73,21 @@ def _decode_pyav(src, rate):
     return bytes(pcm)
 
 
+def _decode_soundfile(src, rate):
+    import numpy as np
+    import soundfile as sf
+
+    samples, src_rate = sf.read(src, dtype='int16', always_2d=True)
+    if samples.size == 0:
+        raise RuntimeError('soundfile 解码结果为空')
+    samples = samples.astype(np.int32).mean(axis=1).astype(np.int16) if samples.shape[1] > 1 else samples[:, 0]
+    if src_rate != rate:
+        n = int(len(samples) * rate / src_rate)
+        idx = np.minimum((np.arange(n) * src_rate // rate), len(samples) - 1)
+        samples = samples[idx]
+    return samples.tobytes()
+
+
 def _decode_wav(src, rate):
     """标准库兜底 (不依赖 audioop, 兼容 Python 3.13+): 仅支持 16bit WAV"""
     with wave.open(src, 'rb') as w:
@@ -92,6 +108,12 @@ def _decode_wav(src, rate):
 
 
 def _to_pcm(src, rate):
+    try:
+        return _decode_soundfile(src, rate)
+    except ImportError:
+        pass
+    except Exception as e:
+        log.debug(f'soundfile 解码失败, 尝试其他解码器: {e}')
     exe = _find_ffmpeg()
     if exe:
         return _decode_ffmpeg(exe, src, rate)
@@ -103,8 +125,7 @@ def _to_pcm(src, rate):
         return _decode_wav(src, rate)
     except wave.Error:
         raise RuntimeError(
-            '无法解码该音频: 未找到 ffmpeg / imageio-ffmpeg / PyAV, 标准库仅支持 WAV。'
-            '请安装任一解码依赖: pip install imageio-ffmpeg 或 pip install av'
+            '无法解码该音频: 未找到 soundfile / ffmpeg / imageio-ffmpeg / PyAV, 标准库仅支持 WAV。请安装任一解码依赖: pip install soundfile 或 pip install av'
         ) from None
 
 
