@@ -6,8 +6,6 @@
     1. soundfile (pip 包, 自带 libsndfile, 支持 WAV/MP3/OGG/FLAC 等, 不依赖 ffmpeg)
     2. 系统 PATH 中的 ffmpeg
     3. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
-    4. PyAV (pip 包 av, 自带 FFmpeg 库)
-    5. 标准库 wave (零依赖, 仅支持 16bit WAV)
 
 编码使用 pilk (可选依赖, pip install pilk); 未安装时语音原样发送不做转换。
 """
@@ -19,7 +17,6 @@ import os
 import shutil
 import subprocess
 import tempfile
-import wave
 
 from core.base.logger import FRAMEWORK, get_logger
 
@@ -58,21 +55,6 @@ def _decode_ffmpeg(exe, src, rate):
     return proc.stdout
 
 
-def _decode_pyav(src, rate):
-    import av
-
-    pcm = bytearray()
-    with av.open(src) as container:
-        stream = next(s for s in container.streams if s.type == 'audio')
-        resampler = av.AudioResampler(format='s16', layout='mono', rate=rate)
-        for frame in container.decode(stream):
-            for out in resampler.resample(frame):
-                pcm.extend(bytes(out.planes[0]))
-    if not pcm:
-        raise RuntimeError('PyAV 解码结果为空')
-    return bytes(pcm)
-
-
 def _decode_soundfile(src, rate):
     import soundfile as sf
 
@@ -91,45 +73,17 @@ def _decode_soundfile(src, rate):
     return samples.tobytes()
 
 
-def _decode_wav(src, rate):
-    """标准库兜底 (不依赖 audioop, 兼容 Python 3.13+): 仅支持 16bit WAV"""
-    with wave.open(src, 'rb') as w:
-        channels, width, src_rate = w.getnchannels(), w.getsampwidth(), w.getframerate()
-        data = w.readframes(w.getnframes())
-    if width != 2:
-        raise RuntimeError(f'无 ffmpeg 时仅支持 16bit WAV, 当前位宽: {width * 8}bit')
-    samples = array.array('h')
-    samples.frombytes(data)
-    if channels == 2:
-        samples = array.array('h', ((samples[i] + samples[i + 1]) // 2 for i in range(0, len(samples) - 1, 2)))
-    elif channels != 1:
-        raise RuntimeError(f'WAV 声道数不支持: {channels}')
-    if src_rate != rate:
-        n = int(len(samples) * rate / src_rate)
-        samples = array.array('h', (samples[min(int(i * src_rate / rate), len(samples) - 1)] for i in range(n)))
-    return samples.tobytes()
-
-
 def _to_pcm(src, rate):
     try:
         return _decode_soundfile(src, rate)
     except ImportError:
         pass
     except Exception as e:
-        log.debug(f'soundfile 解码失败, 尝试其他解码器: {e}')
+        log.debug(f'soundfile 解码失败, 尝试 ffmpeg: {e}')
     exe = _find_ffmpeg()
     if exe:
         return _decode_ffmpeg(exe, src, rate)
-    try:
-        return _decode_pyav(src, rate)
-    except ImportError:
-        pass
-    try:
-        return _decode_wav(src, rate)
-    except wave.Error:
-        raise RuntimeError(
-            '无法解码该音频: 未找到 soundfile / ffmpeg / imageio-ffmpeg / PyAV, 标准库仅支持 WAV。请安装任一解码依赖: pip install soundfile 或 pip install av'
-        ) from None
+    raise RuntimeError('无法解码该音频: 未找到 soundfile / ffmpeg / imageio-ffmpeg。请安装任一解码依赖: pip install soundfile 或 pip install imageio-ffmpeg')
 
 
 # ==================== 转换 ====================
