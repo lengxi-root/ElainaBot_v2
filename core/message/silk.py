@@ -1,22 +1,18 @@
-#!/usr/bin/env python
-"""音频转 silk v3 (QQ 语音格式) — 跨平台核心实现
+"""音频转 silk v3 (QQ 语音格式) — 跨平台
 
-任意格式音频 → 16bit 单声道 PCM → silk v3 (tencent 变体, 可直接作为 QQ 语音发送)。
+本地语音发送前默认转换为 silk v3 (tencent 变体)。
 
 解码链 (按可用性自动选择, 任一可用即可):
     1. 系统 PATH 中的 ffmpeg
     2. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
     3. PyAV (pip 包 av, 自带 FFmpeg 库)
-    4. 标准库 wave (无任何依赖, 仅支持 16bit WAV)
+    4. 标准库 wave (零依赖, 仅支持 16bit WAV)
 
-编码使用 pilk (silk v3 编解码, 提供各平台预编译 wheel)。
-
-命令行:
-    python -m modules.silk_converter.converter input.mp3 [output.silk]
+编码使用 pilk (silk v3 编码, 提供各平台预编译 wheel)。
 """
 
-import argparse
 import array
+import asyncio
 import contextlib
 import os
 import shutil
@@ -24,10 +20,18 @@ import subprocess
 import tempfile
 import wave
 
-import pilk
+from core.base.logger import FRAMEWORK, get_logger
+
+log = get_logger(FRAMEWORK, 'silk转换')
 
 SUPPORTED_RATES = (8000, 12000, 16000, 24000, 32000, 44100, 48000)
 DEFAULT_RATE = 24000  # QQ 语音常用采样率
+_SILK_HEADERS = (b'\x02#!SILK_V3', b'#!SILK_V3')
+
+
+def is_silk(data: bytes) -> bool:
+    """判断字节流是否已是 silk v3 格式"""
+    return isinstance(data, bytes) and data.startswith(_SILK_HEADERS)
 
 
 # ==================== 解码: 任意音频 → 16bit 单声道 PCM ====================
@@ -87,8 +91,7 @@ def _decode_wav(src, rate):
     return samples.tobytes()
 
 
-def to_pcm(src, rate=DEFAULT_RATE):
-    """解码任意音频文件为 16bit 单声道 PCM 字节流"""
+def _to_pcm(src, rate):
     exe = _find_ffmpeg()
     if exe:
         return _decode_ffmpeg(exe, src, rate)
@@ -105,59 +108,42 @@ def to_pcm(src, rate=DEFAULT_RATE):
         ) from None
 
 
-# ==================== 编码: PCM → silk v3 ====================
+# ==================== 转换 ====================
 
 
-def pcm_to_silk(pcm, out_path, rate=DEFAULT_RATE):
-    """16bit 单声道 PCM 字节流编码为 silk v3 文件, 返回时长(秒)"""
+def audio_to_silk(data: bytes, rate: int = DEFAULT_RATE) -> bytes:
+    """音频字节流转 silk v3 字节流 (已是 silk 则原样返回)"""
+    if is_silk(data):
+        return data
+    import pilk
+
     if rate not in SUPPORTED_RATES:
         raise ValueError(f'采样率 {rate} 不受支持, 可选: {SUPPORTED_RATES}')
-    fd, pcm_path = tempfile.mkstemp(suffix='.pcm')
+    src_fd, src_path = tempfile.mkstemp(suffix='.audio')
+    pcm_fd, pcm_path = tempfile.mkstemp(suffix='.pcm')
+    silk_fd, silk_path = tempfile.mkstemp(suffix='.silk')
+    os.close(silk_fd)
     try:
-        with os.fdopen(fd, 'wb') as f:
+        with os.fdopen(src_fd, 'wb') as f:
+            f.write(data)
+        pcm = _to_pcm(src_path, rate)
+        with os.fdopen(pcm_fd, 'wb') as f:
             f.write(pcm)
-        pilk.encode(pcm_path, out_path, pcm_rate=rate, tencent=True)
+        pilk.encode(pcm_path, silk_path, pcm_rate=rate, tencent=True)
+        with open(silk_path, 'rb') as f:
+            return f.read()
     finally:
-        with contextlib.suppress(OSError):
-            os.remove(pcm_path)
-    return pilk.get_duration(out_path) / 1000
+        for path in (src_path, pcm_path, silk_path):
+            with contextlib.suppress(OSError):
+                os.remove(path)
 
 
-def audio_to_silk(src, out_path=None, rate=DEFAULT_RATE):
-    """音频文件转 silk v3, 返回 (silk 文件路径, 时长秒)"""
-    if not os.path.isfile(src):
-        raise FileNotFoundError(src)
-    if out_path is None:
-        out_path = os.path.splitext(src)[0] + '.silk'
-    pcm = to_pcm(src, rate)
-    duration = pcm_to_silk(pcm, out_path, rate)
-    return out_path, duration
-
-
-def silk_to_wav(src, out_path=None):
-    """silk v3 转 WAV (反向转换)"""
-    if out_path is None:
-        out_path = os.path.splitext(src)[0] + '.wav'
-    pilk.silk_to_wav(src, out_path)
-    return out_path, pilk.get_duration(src) / 1000
-
-
-# ==================== CLI ====================
-
-
-def main():
-    parser = argparse.ArgumentParser(description='音频文件转 silk v3 (QQ 语音格式)')
-    parser.add_argument('input', help='输入音频文件 (mp3/wav/m4a/flac/ogg 等)')
-    parser.add_argument('output', nargs='?', default=None, help='输出 silk 文件 (默认同名 .silk)')
-    parser.add_argument('-r', '--rate', type=int, default=DEFAULT_RATE, choices=SUPPORTED_RATES, help='采样率')
-    parser.add_argument('-d', '--decode', action='store_true', help='反向: silk 转 wav')
-    args = parser.parse_args()
-    if args.decode:
-        out, duration = silk_to_wav(args.input, args.output)
-    else:
-        out, duration = audio_to_silk(args.input, args.output, args.rate)
-    print(f'{out} ({duration:.1f}s)')
-
-
-if __name__ == '__main__':
-    main()
+async def convert_to_silk(data: bytes, rate: int = DEFAULT_RATE) -> bytes:
+    """异步转换 (线程池执行); 转换失败时回退原数据, 不阻断发送"""
+    if is_silk(data):
+        return data
+    try:
+        return await asyncio.to_thread(audio_to_silk, data, rate)
+    except Exception as e:
+        log.warning(f'语音转 silk 失败, 使用原数据发送: {e}')
+        return data
