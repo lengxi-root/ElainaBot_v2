@@ -8,7 +8,7 @@
     3. PyAV (pip 包 av, 自带 FFmpeg 库)
     4. 标准库 wave (零依赖, 仅支持 16bit WAV)
 
-编码使用 pilk (silk v3 编码, 提供各平台预编译 wheel)。
+编码使用 pilk (可选依赖, pip install pilk); 未安装时语音原样发送不做转换。
 """
 
 import array
@@ -115,7 +115,7 @@ def audio_to_silk(data: bytes, rate: int = DEFAULT_RATE) -> bytes:
     """音频字节流转 silk v3 字节流 (已是 silk 则原样返回)"""
     if is_silk(data):
         return data
-    import pilk
+    import pilk  # 可选依赖, 未安装由调用方回退
 
     if rate not in SUPPORTED_RATES:
         raise ValueError(f'采样率 {rate} 不受支持, 可选: {SUPPORTED_RATES}')
@@ -144,6 +144,9 @@ async def convert_to_silk(data: bytes, rate: int = DEFAULT_RATE) -> bytes:
         return data
     try:
         return await asyncio.to_thread(audio_to_silk, data, rate)
+    except ImportError:
+        log.warning('未安装 pilk, 语音不转 silk 原样发送 (可选: pip install pilk)')
+        return data
     except Exception as e:
         log.warning(f'语音转 silk 失败, 使用原数据发送: {e}')
         return data
