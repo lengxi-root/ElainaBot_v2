@@ -59,19 +59,12 @@ def _msg_seq():
 
 def _is_rate_limited(data):
     """判断是否接口频率限制错误"""
-    if not isinstance(data, dict):
-        return False
-    return data.get('err_code') == _RATE_LIMIT_ERR_CODE
+    return isinstance(data, dict) and data.get('err_code') == _RATE_LIMIT_ERR_CODE
 
 
 def _is_violation(data):
     """判断是否消息内容违规被拦截"""
-    if not isinstance(data, dict):
-        return False
-    if data.get('code') == _VIOLATION_CODE or data.get('err_code') == _VIOLATION_CODE:
-        return True
-    msg = str(data.get('message', ''))
-    return '违规' in msg or '内容安全' in msg
+    return isinstance(data, dict) and data.get('err_code') == _VIOLATION_CODE
 
 
 def _is_retryable(e):
