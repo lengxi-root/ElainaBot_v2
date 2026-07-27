@@ -39,6 +39,7 @@ _NET_RETRY_DELAY = 0.5  # 秒, 按次数线性递增
 _RATE_LIMIT_CODE = 100017
 _RATE_LIMIT_ERR_CODE = 40023001
 _RATE_LIMIT_RETRY_DELAY = 1.0  # 秒
+_VIOLATION_CODE = 40034006  # 消息内容违规
 _DEFAULT_MAX_CONNECTIONS = 200
 
 
@@ -62,6 +63,16 @@ def _is_rate_limited(data):
     if not isinstance(data, dict):
         return False
     return data.get('code') == _RATE_LIMIT_CODE or data.get('err_code') == _RATE_LIMIT_ERR_CODE
+
+
+def _is_violation(data):
+    """判断是否消息内容违规被拦截"""
+    if not isinstance(data, dict):
+        return False
+    if data.get('code') == _VIOLATION_CODE or data.get('err_code') == _VIOLATION_CODE:
+        return True
+    msg = str(data.get('message', ''))
+    return '违规' in msg or '内容安全' in msg
 
 
 def _is_retryable(e):
