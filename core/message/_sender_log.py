@@ -6,7 +6,7 @@ import contextvars
 import json
 
 from core.base.logger import FRAMEWORK, report_error_raw
-from core.message._http import _IGNORE_ERROR_CODES, MSG_TYPE_MEDIA, _is_violation
+from core.message._http import _IGNORE_ERROR_CODES, MSG_TYPE_MEDIA, _is_rate_limited, _is_violation
 from core.message.response import extract_message_id, extract_reference_id
 from core.message.template import tpl
 from core.module.hook import get_hook_manager as _get_hooks
@@ -183,6 +183,8 @@ class _SenderLogMixin:
                 }) is None
                 if handled and not ctx['failed']:
                     return True  # 插件已处理且补救成功, 不发模板
+            if _is_rate_limited(data):
+                return False  # 限频错误不回发报错模板 (重发已节流, 再发模板只会加剧限频)
             if tpl.get_raw('api_error', self._appid) is None:
                 return False
             content, buttons = tpl.render_error(
