@@ -3,9 +3,9 @@
 本地语音发送前默认转换为 silk v3 (tencent 变体)。
 
 解码链 (按可用性自动选择, 任一可用即可):
-    1. soundfile (pip 包, 自带 libsndfile, 支持 WAV/MP3/OGG/FLAC 等, 不依赖 ffmpeg)
+    1. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
     2. 系统 PATH 中的 ffmpeg
-    3. imageio-ffmpeg (pip 包, 自带各平台 ffmpeg 二进制)
+    3. soundfile (pip 包, 自带 libsndfile, 支持 WAV/MP3/OGG/FLAC 等)
 
 编码使用 pilk (可选依赖, pip install pilk); 未安装时语音原样发送不做转换。
 """
@@ -36,15 +36,12 @@ def is_silk(data: bytes) -> bool:
 
 
 def _find_ffmpeg():
-    exe = shutil.which('ffmpeg')
-    if exe:
-        return exe
     try:
         import imageio_ffmpeg
 
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
-        return None
+        return shutil.which('ffmpeg')
 
 
 def _decode_ffmpeg(exe, src, rate):
@@ -74,16 +71,18 @@ def _decode_soundfile(src, rate):
 
 
 def _to_pcm(src, rate):
+    exe = _find_ffmpeg()
+    if exe:
+        try:
+            return _decode_ffmpeg(exe, src, rate)
+        except Exception as e:
+            log.debug(f'ffmpeg 解码失败, 尝试 soundfile: {e}')
     try:
         return _decode_soundfile(src, rate)
     except ImportError:
-        pass
-    except Exception as e:
-        log.debug(f'soundfile 解码失败, 尝试 ffmpeg: {e}')
-    exe = _find_ffmpeg()
-    if exe:
-        return _decode_ffmpeg(exe, src, rate)
-    raise RuntimeError('无法解码该音频: 未找到 soundfile / ffmpeg / imageio-ffmpeg。请安装任一解码依赖: pip install soundfile 或 pip install imageio-ffmpeg')
+        raise RuntimeError(
+            '无法解码该音频: 未找到 imageio-ffmpeg / ffmpeg / soundfile。请安装任一解码依赖: pip install imageio-ffmpeg 或 pip install soundfile'
+        ) from None
 
 
 # ==================== 转换 ====================
