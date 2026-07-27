@@ -165,7 +165,7 @@ class _SenderLogMixin:
         return True, data
 
     async def _handle_send_failure(self, endpoint, data, event=None):
-        """发送失败处理: 先回传 send_failed 钩子补救, 未处理或补救也失败时回发 api_error 模板; 返回补救是否成功"""
+        """发送失败处理: 先回传 send_failed 钩子补救, 未处理或补救也失败时回发 api_error 模板; 返回插件补救是否成功"""
         ctx = _failure_ctx.get()
         if ctx is not None:
             ctx['failed'] = True
@@ -193,11 +193,9 @@ class _SenderLogMixin:
             if not content:
                 return False
             payload = self._build_payload(event, content, buttons, None, None) if event is not None else self._build_core_payload(content, buttons, None, None)
-            try:
-                ok, _ = await self.post_json(endpoint, payload)
-            except Exception:
-                return False
-            return bool(ok) and not ctx['failed']
+            with contextlib.suppress(Exception):
+                await self.post_json(endpoint, payload)
+            return False  # api_error 模板只是提示, 不算补救成功
         finally:
             _failure_ctx.reset(token)
 
