@@ -74,17 +74,20 @@ def _decode_pyav(src, rate):
 
 
 def _decode_soundfile(src, rate):
-    import numpy as np
     import soundfile as sf
 
-    samples, src_rate = sf.read(src, dtype='int16', always_2d=True)
-    if samples.size == 0:
+    with sf.SoundFile(src) as f:
+        channels, src_rate = f.channels, f.samplerate
+        raw = f.buffer_read(dtype='int16')
+    samples = array.array('h')
+    samples.frombytes(bytes(raw))
+    if not samples:
         raise RuntimeError('soundfile 解码结果为空')
-    samples = samples.astype(np.int32).mean(axis=1).astype(np.int16) if samples.shape[1] > 1 else samples[:, 0]
+    if channels > 1:
+        samples = array.array('h', (sum(samples[i : i + channels]) // channels for i in range(0, len(samples) - channels + 1, channels)))
     if src_rate != rate:
         n = int(len(samples) * rate / src_rate)
-        idx = np.minimum((np.arange(n) * src_rate // rate), len(samples) - 1)
-        samples = samples[idx]
+        samples = array.array('h', (samples[min(i * src_rate // rate, len(samples) - 1)] for i in range(n)))
     return samples.tobytes()
 
 
