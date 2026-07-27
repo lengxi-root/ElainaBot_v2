@@ -193,10 +193,11 @@ class _SenderLogMixin:
             if not content:
                 return False
             payload = self._build_payload(event, content, buttons, None, None) if event is not None else self._build_core_payload(content, buttons, None, None)
-            with contextlib.suppress(Exception):
+            try:
                 ok, _ = await self.post_json(endpoint, payload)
-                return bool(ok) and not ctx['failed']
-            return False
+            except Exception:
+                return False
+            return bool(ok) and not ctx['failed']
         finally:
             _failure_ctx.reset(token)
 

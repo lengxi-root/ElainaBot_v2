@@ -309,10 +309,11 @@ class EventHandlerMixin:
             except Exception as e:
                 log.debug(f'读取全量群记录失败 {appid}: {e}')
                 continue
-            for r in bot_rows:
-                gid = r.get('group_id')
-                if gid:
-                    rows.append({'group_id': gid, 'first_seen': r.get('first_seen', '') or '', 'appid': appid})
+            rows.extend(
+                {'group_id': r['group_id'], 'first_seen': r.get('first_seen') or '', 'appid': appid}
+                for r in bot_rows
+                if r.get('group_id')
+            )
         rows.sort(key=lambda r: r['first_seen'], reverse=True)
         return rows
 
