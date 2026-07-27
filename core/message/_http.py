@@ -36,6 +36,9 @@ _TOKEN_EXPIRED_CODE = 11244
 _MAX_MEDIA_DOWNLOAD = 100 * 1024 * 1024  # 100MB 下载上限, 防止 OOM
 _NET_MAX_RETRIES = 2
 _NET_RETRY_DELAY = 0.5  # 秒, 按次数线性递增
+_RATE_LIMIT_CODE = 100017
+_RATE_LIMIT_ERR_CODE = 40023001
+_RATE_LIMIT_RETRY_DELAY = 1.0  # 秒
 _DEFAULT_MAX_CONNECTIONS = 200
 
 
@@ -52,6 +55,13 @@ _NULL_SEM = _NullSem()
 
 def _msg_seq():
     return random.randint(10000, 999999)
+
+
+def _is_rate_limited(data):
+    """判断是否接口频率限制错误"""
+    if not isinstance(data, dict):
+        return False
+    return data.get('code') == _RATE_LIMIT_CODE or data.get('err_code') == _RATE_LIMIT_ERR_CODE
 
 
 def _is_retryable(e):
@@ -158,7 +168,19 @@ class _HttpMixin:
         return await self._request('GET', endpoint, **kwargs)
 
     async def post_json(self, endpoint, payload):
-        return await self._request('POST', endpoint, json=payload)
+        ok, data = await self._request('POST', endpoint, json=payload)
+        # 频率限制: 仅被动消息 (带 msg_id/event_id) 等 1s 重发一次, 同 msg_seq 平台会去重
+        if (
+            not ok
+            and _is_rate_limited(data)
+            and isinstance(payload, dict)
+            and payload.get('msg_seq')
+            and (payload.get('msg_id') or payload.get('event_id'))
+        ):
+            log.warning(f'[{self._appid}] 接口频率限制, {_RATE_LIMIT_RETRY_DELAY}s 后重发被动消息: POST {endpoint}')
+            await asyncio.sleep(_RATE_LIMIT_RETRY_DELAY)
+            ok, data = await self._request('POST', endpoint, json=payload)
+        return ok, data
 
     async def put(self, endpoint, **kwargs):
         return await self._request('PUT', endpoint, **kwargs)
