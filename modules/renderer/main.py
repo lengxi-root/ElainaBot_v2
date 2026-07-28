@@ -52,9 +52,8 @@ _COMMENTS = {
 
 
 async def _ensure_engine_deps(engine, import_name, pip_name):
-    """按需安装并检查子引擎依赖, 返回错误信息 (None 表示就绪)"""
-    sub_dir = os.path.join(_MODULE_DIR, engine)
-    await install_requirements(f'renderer/{engine}', sub_dir, skip_if_met=True, no_cache=True)
+    """安装并检查子引擎依赖, 返回错误信息 (None 表示就绪)"""
+    await install_requirements(f'renderer/{engine}', _MODULE_DIR, skip_if_met=True, no_cache=True)
     importlib.invalidate_caches()
     if importlib.util.find_spec(import_name) is None:
         return f'依赖 {pip_name} 未安装 (pip install {pip_name})'
