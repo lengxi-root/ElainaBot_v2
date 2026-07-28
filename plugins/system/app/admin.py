@@ -102,21 +102,21 @@ async def send_dm(event, match):
 # ==================== 重启 ====================
 
 
-@handler(r'^重启$', name='重启', desc='重启机器人进程', owner_only=True)
-async def restart_bot(event, match):
-    restart_data = {
-        'restart_time': datetime.datetime.now().isoformat(),
-        'completed': False,
-        'message_id': event.message_id,
-        'user_id': event.user_id,
-        'group_id': event.group_id if event.is_group else 'c2c',
-    }
-    _save_json(_RESTART_STATUS_FILE, restart_data)
+def _save_restart_status(event):
+    _save_json(
+        _RESTART_STATUS_FILE,
+        {
+            'restart_time': datetime.datetime.now().isoformat(),
+            'completed': False,
+            'message_id': event.message_id,
+            'user_id': event.user_id,
+            'group_id': event.group_id if event.is_group else 'c2c',
+        },
+    )
 
-    await reply(event, '🔄 正在重启...')
-    await asyncio.sleep(0.5)
 
-    # 优雅重启: 走 Application 流程, 刷写 SQLite 缓冲再 os.execv
+def _do_restart():
+    """优雅重启: 走 Application 流程, 刷写 SQLite 缓冲再 os.execv"""
     try:
         from core.application import get_app
 
@@ -131,6 +131,78 @@ async def restart_bot(event, match):
     # 兜底: Application 不可用时直接重启
     python = sys.executable
     os.execv(python, [python] + sys.argv)
+
+
+@handler(r'^重启$', name='重启', desc='重启机器人进程', owner_only=True)
+async def restart_bot(event, match):
+    _save_restart_status(event)
+    await reply(event, '🔄 正在重启...')
+    await asyncio.sleep(0.5)
+    _do_restart()
+
+
+# ==================== 框架更新 ====================
+
+
+def _get_framework_updater():
+    from web.tools._updater import handlers as _update_handlers
+
+    if _update_handlers._updater:
+        return _update_handlers._updater
+    from core.application import get_app
+    from web.tools._updater.framework import FrameworkUpdater
+
+    app = get_app()
+    base_dir = app._base_dir if app else os.getcwd()
+    return FrameworkUpdater(base_dir)
+
+
+def _format_changelog(commits, limit=10):
+    lines = []
+    for i, c in enumerate(commits[:limit], 1):
+        commit = c.get('commit') or {}
+        msg = (commit.get('message') or '').split('\n')[0].strip()
+        date = ((commit.get('author') or {}).get('date') or '')[:10]
+        sha = (c.get('sha') or '')[:8]
+        lines.append(f'{i}. [{sha}] {msg}' + (f' ({date})' if date else ''))
+    return lines
+
+
+@handler(r'^框架更新$', name='框架更新', desc='更新框架到最新版本并自动重启', owner_only=True)
+async def update_framework(event, match):
+    try:
+        updater = _get_framework_updater()
+    except Exception as e:
+        return await reply(event, f'❌ 更新器不可用: {e}')
+
+    if updater.get_progress().get('is_updating'):
+        return await reply(event, '⏳ 已有更新任务在进行中，请稍后再试')
+
+    await reply(event, '🔍 正在检查更新...')
+    check = await updater.check_for_updates()
+    if check.get('error'):
+        return await reply(event, f'❌ 检查更新失败: {check["error"]}')
+    if not check.get('has_update'):
+        return await reply(event, f'✅ 已是最新版本 ({updater.current_version})')
+
+    lines = [
+        f'🆕 发现新版本 {check.get("latest_version", "")} (当前 {updater.current_version})',
+        '',
+        '📋 最近更新内容:',
+        *_format_changelog(check.get('changelog') or []),
+        '',
+        '⬇️ 开始下载更新...',
+    ]
+    await reply(event, '\n'.join(lines))
+
+    result = await updater.update_to_version(check['latest_version'])
+    if not result.get('success'):
+        return await reply(event, f'❌ 更新失败: {result.get("message", "未知错误")}')
+
+    _save_restart_status(event)
+    await reply(event, f'✅ {result.get("message", "更新成功")}\n🔄 正在重启...')
+    await asyncio.sleep(0.5)
+    _do_restart()
 
 
 # ==================== 重启完成检测 ====================
