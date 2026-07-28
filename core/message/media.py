@@ -6,6 +6,7 @@ import base64
 import contextlib
 import hashlib
 import os
+import struct
 import tempfile
 
 from core.base.logger import FRAMEWORK, get_logger
@@ -253,35 +254,61 @@ def compute_file_hashes(file_path, file_size):
 # ==================== 图片尺寸 ====================
 
 
-def _img_size(img):
-    w, h = img.size
+def _jpeg_size(data):
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            h, w = struct.unpack('>HH', data[i + 5 : i + 9])
+            return w, h
+        i += 2 + struct.unpack('>H', data[i + 2 : i + 4])[0]
+    return None
+
+
+def _webp_size(data):
+    fmt = data[12:16]
+    if fmt == b'VP8X':
+        return int.from_bytes(data[24:27], 'little') + 1, int.from_bytes(data[27:30], 'little') + 1
+    if fmt == b'VP8 ':
+        w, h = struct.unpack('<HH', data[26:30])
+        return w & 0x3FFF, h & 0x3FFF
+    if fmt == b'VP8L':
+        bits = int.from_bytes(data[21:25], 'little')
+        return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    return None
+
+
+def _parse_image_size(data):
+    """解析图片头获取宽高 (PNG/JPEG/GIF/WEBP)"""
+    size = None
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        size = struct.unpack('>II', data[16:24])
+    elif data[:6] in (b'GIF87a', b'GIF89a'):
+        size = struct.unpack('<HH', data[6:10])
+    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        size = _webp_size(data)
+    elif data[:2] == b'\xff\xd8':
+        size = _jpeg_size(data)
+    if not size:
+        return None
+    w, h = size
     return {'width': w, 'height': h, 'px': f'#{w}px #{h}px'}
 
 
 async def get_image_size(client, image_input):
-    """获取图片尺寸 (支持 bytes/URL/路径)"""
+    """获取图片尺寸 (支持 bytes/URL/路径, 解析文件头)"""
     try:
-        import io
-
-        from PIL import Image
-
-        # 本地文件 → 线程池读取 (磁盘 IO 不占用事件循环)
-        if isinstance(image_input, str) and not image_input.startswith(('http://', 'https://')):
-            def _local_size(path):
-                if not os.path.exists(path):
-                    return None
-                with Image.open(path) as img:
-                    return _img_size(img)
-
-            return await asyncio.to_thread(_local_size, image_input)
-        # URL → 下载头部
         if isinstance(image_input, str):
-            resp = await client.get(image_input, headers={'Range': 'bytes=0-65535'})
-            image_input = resp.content
-        # bytes → 解析
+            if image_input.startswith(('http://', 'https://')):
+                resp = await client.get(image_input, headers={'Range': 'bytes=0-65535'})
+                image_input = resp.content
+            else:
+                # 本地文件 → 线程池读取头部
+                image_input = await asyncio.to_thread(_read_chunk, image_input, 0, 65536)
         if isinstance(image_input, bytes):
-            with Image.open(io.BytesIO(image_input)) as img:
-                return _img_size(img)
+            return _parse_image_size(image_input)
     except Exception as e:
         log.debug(f'获取图片尺寸失败: {e}')
     return None
