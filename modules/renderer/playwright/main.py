@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-"""Playwright 异步渲染模块
+"""Playwright 浏览器渲染子引擎
 
 按需启动浏览器, 空闲自动关闭, 通过信号量控制并发页面数, 供所有插件共享。
 
-插件中获取:
-    pw = bot.module_manager.get("playwright")
+插件中获取 (经渲染引擎模块):
+    pw = bot.module_manager.get("renderer").playwright
 
     # 截图 URL → bytes
     img = await pw.screenshot_url("https://example.com", full_page=True)
@@ -18,16 +18,9 @@
         await page.click("#btn")
         img = await page.screenshot(full_page=True)
 
-配置文件 (data/ 下自动生成):
-    config.yaml → max_pages / headless / idle_timeout / timeout 等
+配置文件 (renderer 模块 data/ 下自动生成):
+    playwright.yaml → max_pages / headless / idle_timeout / timeout 等
 """
-
-__module_meta__ = {
-    'name': 'Playwright 渲染引擎',
-    'description': '异步 Playwright 浏览器渲染, 支持 URL/HTML 截图与 PDF 导出',
-    'version': '1.1.0',
-    'author': 'ElainaBot',
-}
 
 import asyncio
 import contextlib
@@ -38,8 +31,6 @@ from contextlib import asynccontextmanager
 from core.base.logger import EXTENSION, get_logger
 
 log = get_logger(EXTENSION, 'Playwright')
-
-_instance = None
 
 _DEFAULTS = {
     'headless': True,
@@ -84,27 +75,6 @@ _COMMENTS = {
     'close_after_use': '用完即关: 每次调用结束后完全关闭浏览器进程, 不保留常驻进程 (适合低内存环境)',
     'launch_args': '浏览器启动参数',
 }
-
-
-# ==================== 模块入口 ====================
-
-
-async def setup(ctx):
-    global _instance
-    cfg = ctx.ensure_config(_DEFAULTS, comments=_COMMENTS)
-    _instance = PlaywrightRenderer(cfg)
-    if cfg.get('close_after_use', False):
-        log.info(f'✅ Playwright 就绪 [{cfg["browser_type"]}] 用完即关模式, 不预初始化')
-    else:
-        log.info(f'✅ Playwright 就绪 [{cfg["browser_type"]}] 首次调用时启动浏览器')
-    return _instance
-
-
-async def teardown():
-    global _instance
-    if _instance:
-        await _instance.close()
-        _instance = None
 
 
 # ==================== PlaywrightRenderer ====================
