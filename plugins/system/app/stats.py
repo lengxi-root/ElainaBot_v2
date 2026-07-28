@@ -91,6 +91,13 @@ def _count_json_array(raw):
         return 0
 
 
+def _count_group_users(all_groups):
+    """逐群解析 users JSON 数人数并排序 (纯 CPU, 在线程池执行)"""
+    counts = [(g['group_id'], _count_json_array(g.get('users'))) for g in (all_groups or [])]
+    counts.sort(key=lambda x: x[1], reverse=True)
+    return counts
+
+
 def _fmt_diff(label, val, y_val, emoji):
     if y_val is not None:
         diff = val - y_val
@@ -268,8 +275,7 @@ async def get_stats(event, match):
     user_count, group_count, member_count, all_groups = await asyncio.gather(users_q, groups_q, members_q, all_groups_q)
 
     # Python 端统计各群人数 (不依赖 SQLite JSON 扩展)
-    group_counts = [(g['group_id'], _count_json_array(g.get('users'))) for g in (all_groups or [])]
-    group_counts.sort(key=lambda x: x[1], reverse=True)
+    group_counts = await asyncio.to_thread(_count_group_users, all_groups)
 
     info = [
         f'<@{event.user_id}>',
