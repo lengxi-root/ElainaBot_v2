@@ -88,8 +88,8 @@ class TokenManager:
             self._client = AsyncHttpClient(
                 base_url=self._api_base,
                 timeout=float(net.get('timeout', 30.0)),
-                max_connections=int(net.get('max_connections', 200)),
-                max_keepalive=int(net.get('max_keepalive', 100)),
+                max_connections=int(net.get('max_connections', 50)),
+                max_keepalive=int(net.get('max_keepalive', 20)),
                 pool_timeout=float(net.get('pool_timeout', 10.0)),
             )
         return self._client
