@@ -21,7 +21,6 @@ from core.module.manager import ModuleManager
 from core.plugin.manager import PluginManager
 from core.server.http_server import HttpServer
 from core.services.config_watcher import ConfigWatcherService
-from core.services.loop_monitor import LoopMonitorService
 from core.services.media_cleanup import MediaCleanupService
 from core.services.scheduler import RestartScheduler
 from core.storage.dau import DAUService
@@ -106,7 +105,6 @@ class Application(EventHandlerMixin):
         self._config_watcher: ConfigWatcherService | None = None
         self._media_cleanup: MediaCleanupService | None = None
         self._restart_scheduler: RestartScheduler | None = None
-        self._loop_monitor: LoopMonitorService | None = None
 
         # 状态
         self._web_log_cb: Callable[[str, dict], None] | None = None
@@ -272,10 +270,8 @@ class Application(EventHandlerMixin):
         self._config_watcher = ConfigWatcherService(interval=5.0)
         self._media_cleanup = MediaCleanupService(media_dir=self._media_dir, max_age_days=3, interval=3600)
         self._restart_scheduler = RestartScheduler(on_restart=self._trigger_restart)
-        self._loop_monitor = LoopMonitorService(
-            stall_threshold=float(cfg.get('settings', 'monitor.loop_stall_threshold', 2.0)))
 
-        for svc in (self._config_watcher, self._media_cleanup, self._restart_scheduler, self._loop_monitor):
+        for svc in (self._config_watcher, self._media_cleanup, self._restart_scheduler):
             svc.start()
 
         _tune_gc()
@@ -327,7 +323,7 @@ class Application(EventHandlerMixin):
             self._plugin_manager.stop_watcher()
 
         # 停止后台服务
-        for svc in (self._config_watcher, self._media_cleanup, self._restart_scheduler, self._loop_monitor):
+        for svc in (self._config_watcher, self._media_cleanup, self._restart_scheduler):
             if svc:
                 svc.stop()
 
