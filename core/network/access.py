@@ -91,6 +91,7 @@ class TokenManager:
                 max_connections=int(net.get('max_connections', 50)),
                 max_keepalive=int(net.get('max_keepalive', 20)),
                 pool_timeout=float(net.get('pool_timeout', 10.0)),
+                backend=str(net.get('http_backend', 'httpx')),
             )
         return self._client
 

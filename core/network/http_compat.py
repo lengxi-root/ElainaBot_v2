@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""HTTP 客户端兼容层 — 优先使用 httpx, 未安装时回退到 aiohttp"""
+"""HTTP 客户端兼容层 — 默认 httpx, 可通过 backend 参数指定 aiohttp"""
 
 import json as _json
 
@@ -28,7 +28,7 @@ class HttpResponse:
 
 
 class AsyncHttpClient:
-    """统一异步 HTTP 客户端 — httpx 优先, 回退 aiohttp"""
+    """统一异步 HTTP 客户端 — 默认 httpx, 可指定 backend='aiohttp'"""
 
     __slots__ = ('_client', '_is_httpx')
 
@@ -42,8 +42,9 @@ class AsyncHttpClient:
         keepalive_expiry=20.0,
         pool_timeout=10.0,
         follow_redirects=True,
+        backend='httpx',
     ):
-        self._is_httpx = HAS_HTTPX
+        self._is_httpx = HAS_HTTPX and backend != 'aiohttp'
         if self._is_httpx:
             self._client = httpx.AsyncClient(
                 base_url=base_url or '',
