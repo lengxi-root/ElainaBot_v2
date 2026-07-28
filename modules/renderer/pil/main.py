@@ -12,7 +12,7 @@ CPU 密集的 PIL 渲染放到独立子进程执行, 子进程拥有独立 GIL, 
     img_data, w, h = await pil.render(_render_sync, arg1, arg2)
 
 按需 fork 创建 (继承已加载的插件模块), 空闲自动回收 (释放内存, 热重载后
-新代码随重建生效), 崩溃自动重建; 不可用时回退线程池, 功能不受影响。
+新代码随重建生效), 崩溃自动重建; 不可用时直接报错。
 
 配置文件 (renderer 模块 data/ 下自动生成):
     pil.yaml → workers / idle_timeout / task_timeout 等
@@ -78,14 +78,13 @@ class PILRenderPool:
         return not self._closed
 
     async def render(self, fn, *args, **kwargs):
-        """在子进程池执行同步渲染函数并返回结果 (不可用时回退线程池)"""
+        """在子进程池执行同步渲染函数并返回结果"""
         if self._closed:
             raise RuntimeError('PIL 渲染池已关闭')
         try:
             pickle.dumps((fn, args, kwargs))
-        except Exception:
-            log.warning(f'{getattr(fn, "__name__", fn)} 参数不可 pickle, 回退线程池执行')
-            return await asyncio.to_thread(fn, *args, **kwargs)
+        except Exception as e:
+            raise ValueError(f'{getattr(fn, "__name__", fn)} 参数不可 pickle, 无法提交到子进程渲染: {e}') from e
 
         async with self._semaphore:
             self._active += 1
@@ -97,17 +96,14 @@ class PILRenderPool:
 
     async def _run_in_pool(self, fn, args, kwargs, retried):
         pool = await self._ensure_pool()
-        if pool is None:
-            return await asyncio.to_thread(fn, *args, **kwargs)
         loop = asyncio.get_running_loop()
         try:
             fut = loop.run_in_executor(pool, _invoke, fn, args, kwargs)
             return await asyncio.wait_for(fut, timeout=self._cfg.get('task_timeout', 60))
-        except BrokenProcessPool:
+        except BrokenProcessPool as e:
             await self._discard_pool()
             if retried:
-                log.error('渲染进程池连续崩溃, 回退线程池执行')
-                return await asyncio.to_thread(fn, *args, **kwargs)
+                raise RuntimeError('PIL 渲染进程池连续崩溃') from e
             log.warning('渲染进程池崩溃, 重建后重试')
             return await self._run_in_pool(fn, args, kwargs, retried=True)
 
@@ -119,9 +115,8 @@ class PILRenderPool:
                 return self._pool
             try:
                 mp_ctx = multiprocessing.get_context('fork')
-            except ValueError:
-                log.warning('当前平台不支持 fork, 渲染回退线程池')
-                return None
+            except ValueError as e:
+                raise RuntimeError('当前平台不支持 fork, PIL 子进程渲染池不可用') from e
             workers = self._cfg.get('workers', 2)
             # fork 继承主进程已加载的插件模块, 子进程可直接执行插件的渲染函数
             self._pool = ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx)
