@@ -149,7 +149,12 @@ class ModuleManager:
         try:
             with open(self._enabled_file, encoding='utf-8') as f:
                 data = json.load(f)
-            return data if isinstance(data, dict) else {}
+            if not isinstance(data, dict):
+                return {}
+            # 模块改名迁移: playwright -> render
+            if 'playwright' in data and 'render' not in data:
+                data['render'] = data.pop('playwright')
+            return data
         except Exception:
             return {}
 
