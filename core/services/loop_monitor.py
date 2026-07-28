@@ -12,10 +12,16 @@
 
 import asyncio
 import gc
+import os
 import sys
 import threading
 import time
 import traceback
+
+try:
+    import resource
+except ImportError:  # Windows
+    resource = None  # type: ignore[assignment]
 
 from core.base.logger import SERVICE, get_logger
 
@@ -53,7 +59,15 @@ class LoopMonitorService:
             self._gc_last_slow = desc
             log.warning(f'GC 暂停: {desc} (期间事件循环完全冻结)')
 
-    # ===== 缺页采样 (Linux) =====
+    # ===== 资源采样 (Linux) =====
+
+    @staticmethod
+    def _read_fd_count():
+        """当前进程打开的 fd 数 (逼近 ulimit 时 socket/epoll 会大量报 Errno 24)"""
+        try:
+            return len(os.listdir('/proc/self/fd'))
+        except OSError:
+            return -1
 
     @staticmethod
     def _read_majflt():
@@ -98,6 +112,11 @@ class LoopMonitorService:
                     cause.append(f'GC 占 {gc_time:.1f}s')
                 if majflt_delta > 100:
                     cause.append(f'major 缺页 +{majflt_delta} (内存换页/swap, 检查系统内存)')
+                fd_count = self._read_fd_count()
+                if fd_count > 0 and resource is not None:
+                    soft_limit = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+                    if fd_count >= soft_limit * 0.8:
+                        cause.append(f'fd 已用 {fd_count}/{soft_limit} (接近上限, 将触发 Errno 24)')
                 log.warning(
                     f'事件循环恢复, 本次卡顿约 {total:.1f}s'
                     + (f' — 归因: {"; ".join(cause)}' if cause else ' — 期间无 GC/换页, 疑似宿主机 CPU 争抢或同步阻塞代码')

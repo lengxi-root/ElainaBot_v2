@@ -39,6 +39,19 @@ def _tune_gc():
     log.info(f'GC 已调优: freeze {gc.get_freeze_count()} 个启动期对象, 阈值 {gc.get_threshold()}')
 
 
+def _tune_rlimit():
+    """提升 fd 软上限至硬上限: 默认 1024 在消息高峰 (连接池+临时文件) 下极易耗尽, 触发 Errno 24"""
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            log.info(f'fd 上限已提升: {soft} -> {hard}')
+    except (ImportError, ValueError, OSError):
+        pass  # Windows / 无权限
+
+
 def _tune_malloc():
     """调优 glibc malloc: 限制 arena, 降低碎片 (进程级)"""
     try:
@@ -53,6 +66,7 @@ def _tune_malloc():
 
 
 _tune_malloc()
+_tune_rlimit()
 
 # 全局应用实例 (由 start() 设置)
 _app: 'Application | None' = None
