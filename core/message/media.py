@@ -117,11 +117,19 @@ async def upload_media_via_url(
 async def _chunked_upload_from_bytes(sender, file_bytes, file_type, endpoint, *, file_name=None):
     """内存数据分片上传 (写临时文件)"""
     suffix = os.path.splitext(file_name)[1] if file_name else ''
-    tmp_path = None
-    try:
+
+    def _write_tmp():
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
             f.write(file_bytes)
-            tmp_path = f.name
+            return f.name
+
+    def _remove_tmp(path):
+        with contextlib.suppress(OSError):
+            os.remove(path)
+
+    tmp_path = None
+    try:
+        tmp_path = await asyncio.to_thread(_write_tmp)
         return await chunked_upload(
             sender,
             tmp_path,
@@ -130,9 +138,8 @@ async def _chunked_upload_from_bytes(sender, file_bytes, file_type, endpoint, *,
             file_name=file_name or os.path.basename(tmp_path),
         )
     finally:
-        if tmp_path and os.path.exists(tmp_path):
-            with contextlib.suppress(OSError):
-                os.remove(tmp_path)
+        if tmp_path:
+            await asyncio.to_thread(_remove_tmp, tmp_path)
 
 
 async def chunked_upload(sender, file_path, file_type, endpoint, *, file_name=None):
@@ -258,12 +265,15 @@ async def get_image_size(client, image_input):
 
         from PIL import Image
 
-        # 本地文件 → 直接打开
+        # 本地文件 → 线程池读取 (磁盘 IO 不占用事件循环)
         if isinstance(image_input, str) and not image_input.startswith(('http://', 'https://')):
-            if not os.path.exists(image_input):
-                return None
-            with Image.open(image_input) as img:
-                return _img_size(img)
+            def _local_size(path):
+                if not os.path.exists(path):
+                    return None
+                with Image.open(path) as img:
+                    return _img_size(img)
+
+            return await asyncio.to_thread(_local_size, image_input)
         # URL → 下载头部
         if isinstance(image_input, str):
             resp = await client.get(image_input, headers={'Range': 'bytes=0-65535'})
