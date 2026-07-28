@@ -1,32 +1,25 @@
 #!/usr/bin/env python
 """PIL 子进程渲染池子引擎
 
-CPU 密集的 PIL 渲染放到独立子进程执行, 子进程拥有独立 GIL, 渲染再重也不会
-与主进程事件循环争抢 GIL (线程池渲染大图会饿死事件循环, 造成秒级卡顿)。
-全局单例, 供所有插件共享, 不再每个插件各开一个渲染池。
+CPU 密集的 PIL 渲染放到独立子进程执行 (独立 GIL, 不卡主进程事件循环),
+全局单例供所有插件共享。按需 fork 创建, 空闲自动回收, 崩溃自动重建。
 
-插件中获取 (经渲染引擎模块):
+插件中获取:
     pil = bot.module_manager.get("renderer").pil
+    img_data, w, h = await pil.render(_render_sync, arg1, arg2)  # 函数与参数须可 pickle
 
-    # 渲染函数须为模块级函数, 参数与返回值可 pickle
-    img_data, w, h = await pil.render(_render_sync, arg1, arg2)
-
-按需 fork 创建 (继承已加载的插件模块), 空闲自动回收 (释放内存, 热重载后
-新代码随重建生效), 崩溃自动重建; 不可用时直接报错。
-
-配置文件 (renderer 模块 data/ 下自动生成):
-    pil.yaml → workers / idle_timeout / task_timeout 等
+配置: renderer 模块 data/pil.yaml
 """
 
 import asyncio
 import contextlib
 import multiprocessing
 import pickle
-import time
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 
 from core.base.logger import EXTENSION, get_logger
+from modules.renderer.base import IdleEngine
 
 log = get_logger(EXTENSION, 'PIL渲染池')
 
@@ -50,32 +43,14 @@ def _invoke(fn, args, kwargs):
     return fn(*args, **kwargs)
 
 
-class PILRenderPool:
+class PILRenderPool(IdleEngine):
     """PIL 子进程渲染池 (按需创建, 空闲回收, 崩溃重建)"""
 
-    __slots__ = (
-        '_cfg',
-        '_pool',
-        '_lock',
-        '_semaphore',
-        '_active',
-        '_last_release',
-        '_cleanup_task',
-        '_closed',
-    )
+    __slots__ = ('_pool',)
 
     def __init__(self, cfg):
-        self._cfg = cfg
+        super().__init__(cfg, cfg.get('max_concurrent', 4))
         self._pool = None
-        self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(cfg.get('max_concurrent', 4))
-        self._active = 0
-        self._last_release = 0.0
-        self._cleanup_task = None
-        self._closed = False
-
-    def is_available(self):
-        return not self._closed
 
     async def render(self, fn, *args, **kwargs):
         """在子进程池执行同步渲染函数并返回结果"""
@@ -92,7 +67,7 @@ class PILRenderPool:
                 return await self._run_in_pool(fn, args, kwargs, retried=False)
             finally:
                 self._active -= 1
-                self._last_release = time.monotonic()
+                self._mark_released()
 
     async def _run_in_pool(self, fn, args, kwargs, retried):
         pool = await self._ensure_pool()
@@ -118,11 +93,10 @@ class PILRenderPool:
             except ValueError as e:
                 raise RuntimeError('当前平台不支持 fork, PIL 子进程渲染池不可用') from e
             workers = self._cfg.get('workers', 2)
-            # fork 继承主进程已加载的插件模块, 子进程可直接执行插件的渲染函数
+            # fork 继承已加载的插件模块, 子进程可直接执行插件的渲染函数
             self._pool = ProcessPoolExecutor(max_workers=workers, mp_context=mp_ctx)
             log.info(f'PIL 渲染进程池已创建 ({workers} worker)')
-            if self._cleanup_task is None or self._cleanup_task.done():
-                self._cleanup_task = asyncio.create_task(self._idle_cleanup())
+            self._start_idle_cleanup(60)
             return self._pool
 
     async def _discard_pool(self):
@@ -132,27 +106,12 @@ class PILRenderPool:
             with contextlib.suppress(Exception):
                 pool.shutdown(wait=False, cancel_futures=True)
 
-    async def _idle_cleanup(self):
-        """空闲超时后回收子进程 (释放内存, 也让插件热重载后的新代码生效)"""
-        idle_timeout = self._cfg.get('idle_timeout', 300)
-        while True:
-            await asyncio.sleep(60)
-            if (
-                self._pool is not None
-                and self._active == 0
-                and self._last_release
-                and time.monotonic() - self._last_release >= idle_timeout
-            ):
-                await self._discard_pool()
-                log.info('PIL 渲染进程池空闲回收')
+    async def _release_idle(self):
+        if self._pool is not None:
+            await self._discard_pool()
+            log.info('PIL 渲染进程池空闲回收')
 
     async def close(self):
-        """模块卸载时调用: 停止清理任务并关闭进程池"""
         self._closed = True
-        task, self._cleanup_task = self._cleanup_task, None
-        if task and not task.done():
-            task.cancel()
-        pool, self._pool = self._pool, None
-        if pool is not None:
-            with contextlib.suppress(Exception):
-                pool.shutdown(wait=False, cancel_futures=True)
+        self._stop_idle_cleanup()
+        await self._discard_pool()
