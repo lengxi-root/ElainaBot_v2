@@ -99,7 +99,7 @@ async def setup(ctx):
 
     parts = []
     if pil_inst:
-        parts.append(f'PIL ✅ [{pil_cfg["workers"]} worker 按需创建]')
+        parts.append(f'PIL ✅ [常驻 {pil_cfg["min_workers"]} / 最大 {pil_cfg["max_workers"]} worker]')
     elif cfg.get('pil_enabled'):
         parts.append('PIL ❌')
     else:
