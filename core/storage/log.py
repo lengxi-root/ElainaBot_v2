@@ -139,12 +139,17 @@ class LogService(_BaseLogService, ShareMixin, WakeupMixin, SubscribeMixin):
             )
         if log_type == 'lifecycle':
             extra = {k: v for k, v in data.items() if k not in ('timestamp', 'type', 'user_id', 'group_id')}
+            # extra 字段本身是原始事件 JSON 字符串时直接落库, 避免再包一层 {"extra": "..."} 双重编码
+            if set(extra) == {'extra'} and isinstance(extra['extra'], str):
+                extra_json = extra['extra']
+            else:
+                extra_json = json.dumps(extra, ensure_ascii=False) if extra else ''
             return (
                 ts,
                 data.get('type', ''),
                 data.get('user_id', ''),
                 data.get('group_id', ''),
-                json.dumps(extra, ensure_ascii=False) if extra else '',
+                extra_json,
             )
         return None
 
