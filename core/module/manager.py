@@ -16,6 +16,8 @@ from core.module.hook import get_hook_manager
 
 log = get_logger(EXTENSION, '管理器')
 
+_alias_warned = False
+
 
 async def _await_if_coro(result):
     """await 协程结果, 否则直接返回"""
@@ -254,9 +256,19 @@ class ModuleManager:
     # ==================== 查询 ====================
 
     def get(self, name):
-        """获取已启用模块实例 (setup 返回值)"""
+        """获取已启用模块实例 (setup 返回值), 旧名 playwright 解析到 renderer 子引擎"""
         info = self._modules.get(name)
-        return info.instance if info and info.instance is not None else None
+        if info and info.instance is not None:
+            return info.instance
+        if name == 'playwright':
+            renderer = self.get('renderer')
+            if renderer is not None:
+                global _alias_warned
+                if not _alias_warned:
+                    _alias_warned = True
+                    log.warning('模块名 playwright 已弃用, 请改用 renderer 模块的 .playwright 子引擎')
+                return renderer.playwright
+        return None
 
     def get_context(self, name):
         """获取模块上下文"""
