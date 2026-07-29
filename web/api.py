@@ -177,7 +177,7 @@ def get_routes() -> list:
         web.post('/api/openapi/webhook/check', _(openapi_handler.handle_check_webhook)),
         web.post('/api/openapi/webhook/auth-qr', _(openapi_handler.handle_get_webhook_auth_qr)),
         web.post('/api/openapi/webhook/set', _(openapi_handler.handle_set_webhook)),
-        # ── 新版开放平台 (v2, 内测) ──
+        # ── 新版开放平台 (v2) ──
         web.post('/api/openapi/v2/start-login', _(openapi_handler.handle_v2_start_login)),
         web.post('/api/openapi/v2/check-login', _(openapi_handler.handle_v2_check_login)),
         web.post('/api/openapi/v2/status', _(openapi_handler.handle_v2_status)),
