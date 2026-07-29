@@ -39,6 +39,7 @@ _NET_MAX_RETRIES = 2
 _NET_RETRY_DELAY = 0.5  # 秒, 按次数线性递增
 _RATE_LIMIT_ERR_CODE = 40023001
 _RATE_LIMIT_RESEND_PER_SEC = 40  # 限频补发速率 (全局每秒条数)
+_RATE_LIMIT_RESEND_MAX_WAIT = 30  # 补发排队上限 (秒), 超出直接丢弃避免雪崩期越积越深
 _VIOLATION_CODE = 40034006  # 消息内容违规
 _DEFAULT_MAX_CONNECTIONS = 200
 
@@ -62,13 +63,17 @@ class _ResendLimiter:
         self._next = 0.0
         self._lock = asyncio.Lock()
 
-    async def acquire(self):
+    async def acquire(self, max_wait=None):
+        """分配补发时隙并等待到时隙; 若需等待超过 max_wait 则不占用时隙并返回 False"""
         async with self._lock:
             now = time.monotonic()
             slot = max(now, self._next)
+            if max_wait is not None and slot - now > max_wait:
+                return False
             self._next = slot + self._interval
         if slot > now:
             await asyncio.sleep(slot - now)
+        return True
 
 
 _RESEND_LIMITER = _ResendLimiter(_RATE_LIMIT_RESEND_PER_SEC)
@@ -201,9 +206,13 @@ class _HttpMixin:
             and payload.get('msg_seq')
             and (payload.get('msg_id') or payload.get('event_id'))
         ):
-            log.warning(f'[{self._appid}] 接口频率限制, 排队重发被动消息: POST {endpoint}')
-            await _RESEND_LIMITER.acquire()
-            ok, data = await self._request('POST', endpoint, json=payload)
+            if await _RESEND_LIMITER.acquire(_RATE_LIMIT_RESEND_MAX_WAIT):
+                log.warning(f'[{self._appid}] 接口频率限制, 排队重发被动消息: POST {endpoint}')
+                ok, data = await self._request('POST', endpoint, json=payload)
+            else:
+                log.warning(
+                    f'[{self._appid}] 接口频率限制, 补发队列需等待超过 '
+                    f'{_RATE_LIMIT_RESEND_MAX_WAIT}s, 丢弃过时消息: POST {endpoint}')
         return ok, data
 
     async def put(self, endpoint, **kwargs):
