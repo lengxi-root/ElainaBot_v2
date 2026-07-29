@@ -185,6 +185,7 @@ def get_routes() -> list:
         web.post('/api/openapi/v2/switch-developer', _(openapi_handler.handle_v2_switch_developer)),
         web.post('/api/openapi/v2/proxy', _(openapi_handler.handle_v2_proxy)),
         web.post('/api/openapi/v2/upload-avatar', _(openapi_handler.handle_v2_upload_avatar)),
+        web.post('/api/openapi/v2/webhook-suggest', _(openapi_handler.handle_v2_webhook_suggest)),
         # ── 自定义页面 ──
         web.get('/api/web-pages', _(handle_get_web_pages)),
         web.get('/api/web-pages/{key}', _(handle_get_web_page_html)),
