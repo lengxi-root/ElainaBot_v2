@@ -14,6 +14,7 @@ CPU 密集的 PIL 渲染放到独立子进程执行 (独立 GIL, 不卡主进程
 
 import asyncio
 import contextlib
+import ctypes
 import multiprocessing
 import os
 import pickle
@@ -26,6 +27,20 @@ from core.base.logger import EXTENSION, get_logger
 from modules.renderer.base import IdleEngine
 
 log = get_logger(EXTENSION, 'PIL渲染池')
+
+try:
+    _libc = ctypes.CDLL('libc.so.6')
+except OSError:
+    _libc = None
+
+
+def _trim_memory():
+    """把 glibc 空闲堆内存归还系统: PIL 大图渲染后 free 的内存默认留在 arena 里不还,
+    长命子进程 RSS 会居高不下, malloc_trim(0) 主动收缩。非 glibc 平台静默跳过。"""
+    if _libc is not None:
+        with contextlib.suppress(Exception):
+            _libc.malloc_trim(0)
+
 
 _DEFAULTS = {
     'min_workers': 1,
@@ -47,8 +62,11 @@ _COMMENTS = {
 
 
 def _invoke(fn, args, kwargs):
-    """子进程侧执行入口"""
-    return fn(*args, **kwargs)
+    """子进程侧执行入口: 渲染后归还空闲堆内存, 避免子进程 RSS 随大图渲染累积"""
+    try:
+        return fn(*args, **kwargs)
+    finally:
+        _trim_memory()
 
 
 class PILRenderPool(IdleEngine):
