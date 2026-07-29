@@ -9,7 +9,11 @@ from datetime import datetime, timedelta
 from core.base.config import cfg
 from core.base.logger import PLUGIN, get_logger
 from core.plugin.decorators import handler
-from core.storage.lifecycle_stats import compute_lifecycle_counts
+from core.storage.lifecycle_stats import (
+    LIFECYCLE_COUNTS_SQL,
+    compute_lifecycle_counts,
+    lifecycle_counts_from_rows,
+)
 
 from ._dau_image import render_dau_image
 from ._reply import reply
@@ -186,14 +190,17 @@ def _query_today_stats_sync(bot):
         date=today,
     )
 
-    lifecycle = q(
-        'lifecycle',
-        'SELECT type, user_id, group_id FROM log ORDER BY id',
-        date=today,
-    )
-    counts = compute_lifecycle_counts(
-        (r.get('type', ''), r.get('user_id', ''), r.get('group_id', '')) for r in lifecycle
-    )
+    try:
+        counts = lifecycle_counts_from_rows(q('lifecycle', LIFECYCLE_COUNTS_SQL, date=today))
+    except Exception:
+        lifecycle = q(
+            'lifecycle',
+            'SELECT type, user_id, group_id FROM log ORDER BY id',
+            date=today,
+        )
+        counts = compute_lifecycle_counts(
+            (r.get('type', ''), r.get('user_id', ''), r.get('group_id', '')) for r in lifecycle
+        )
     stats['group_join'] = counts['group_join_count']
     stats['group_leave'] = counts['group_leave_count']
     return stats
