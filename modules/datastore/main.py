@@ -95,6 +95,51 @@ async def setup(ctx):
     return _instance
 
 
+async def reload(ctx):
+    """配置热更: 先建新连接池并原地切换, 再关旧池, 期间服务不中断
+
+    DataStore 实例对象保持不变, 插件持有的引用与 module_manager.get() 全程可用。
+    """
+    global _instance
+    if _instance is None:
+        return await setup(ctx)
+
+    cfg = ctx.ensure_config(_DEFAULTS, comments=_COMMENTS)
+
+    from modules.datastore.mysql.main import _COMMENTS as MYSQL_COMMENTS
+    from modules.datastore.mysql.main import _DEFAULTS as MYSQL_DEFAULTS
+    from modules.datastore.mysql.main import MySQLPool
+    from modules.datastore.redis.main import _COMMENTS as REDIS_COMMENTS
+    from modules.datastore.redis.main import _DEFAULTS as REDIS_DEFAULTS
+    from modules.datastore.redis.main import RedisPool
+
+    mysql_cfg = ctx.ensure_config(MYSQL_DEFAULTS, filename='mysql.yaml', comments=MYSQL_COMMENTS)
+    redis_cfg = ctx.ensure_config(REDIS_DEFAULTS, filename='redis.yaml', comments=REDIS_COMMENTS)
+
+    mysql_inst = None
+    redis_inst = None
+    if cfg.get('mysql_enabled', True):
+        mysql_inst = MySQLPool(mysql_cfg, log)
+        await mysql_inst.initialize()
+    if cfg.get('redis_enabled', False):
+        redis_inst = RedisPool(redis_cfg, log)
+        await redis_inst.initialize()
+
+    old_mysql, old_redis = _instance._mysql, _instance._redis
+    _instance._mysql = mysql_inst
+    _instance._redis = redis_inst
+
+    for pool in (old_mysql, old_redis):
+        if pool:
+            try:
+                await pool.close()
+            except Exception as e:
+                log.warning(f'旧连接池关闭失败: {e}')
+
+    log.info('配置热更完成: 连接池已平滑切换')
+    return _instance
+
+
 async def teardown():
     global _instance
     if _instance:

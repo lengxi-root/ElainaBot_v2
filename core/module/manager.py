@@ -242,11 +242,25 @@ class ModuleManager:
             return True
 
     async def reload(self, name):
-        """重载模块 (teardown → 重新 import + setup), 不改变持久化状态"""
+        """重载模块, 不改变持久化状态
+
+        模块若定义 reload(ctx) 则优先原地热更 (不经历 teardown → setup 的服务空窗);
+        未定义或热更失败时回退完整重载 (teardown → 重新 import + setup)。
+        """
         info = self._modules.get(name)
         if not info:
             return False
         was_enabled = info.instance is not None
+        if was_enabled and info.module is not None and info.ctx is not None:
+            reload_fn = getattr(info.module, 'reload', None)
+            if reload_fn:
+                try:
+                    result = await _await_if_coro(reload_fn(info.ctx))
+                    if result is not None:
+                        info.instance = result
+                    return True
+                except Exception as e:
+                    report_error(EXTENSION, name, e)
         if was_enabled:
             await self.disable(name, _persist=False)
         return await self.enable(name, _persist=False)
