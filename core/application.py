@@ -327,6 +327,10 @@ class Application(EventHandlerMixin):
             if svc:
                 svc.stop()
 
+        # 先关 HTTP 服务器尽早释放监听端口, 避免重启后新进程绑定失败
+        if self._http_server:
+            await self._http_server.stop(timeout=5)
+
         # 按依赖顺序关闭
         cleanup = [
             self._dau_service and self._dau_service.stop(),
@@ -341,9 +345,6 @@ class Application(EventHandlerMixin):
                     await asyncio.wait_for(coro, timeout=10)
                 except TimeoutError:
                     log.warning(f'关闭超时(10s), 跳过: {coro}')
-
-        if self._http_server:
-            await self._http_server.stop(timeout=5)
 
         log.info('已关闭')
 
