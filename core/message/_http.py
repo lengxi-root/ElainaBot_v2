@@ -7,6 +7,7 @@ import time
 from core.base.config import cfg
 from core.base.logger import FRAMEWORK, get_logger
 from core.message.response import loads_raw_response
+from core.module.hook import get_hook_manager
 from core.network.http_compat import HAS_HTTPX
 
 log = get_logger(FRAMEWORK, '消息发送')
@@ -191,7 +192,7 @@ class _HttpMixin:
     async def get_json(self, endpoint, **kwargs):
         return await self._request('GET', endpoint, **kwargs)
 
-    async def post_json(self, endpoint, payload):
+    async def post_json(self, endpoint, payload, event=None):
         ok, data = await self._request('POST', endpoint, json=payload)
         # 频率限制: 仅被动消息 (带 msg_id/event_id) 重发一次, 全局按每秒 40 条节流, 同 msg_seq 平台会去重
         if (
@@ -202,9 +203,27 @@ class _HttpMixin:
             and (payload.get('msg_id') or payload.get('event_id'))
         ):
             log.warning(f'[{self._appid}] 接口频率限制, 排队重发被动消息: POST {endpoint}')
+            self._notify_rate_limited(endpoint, payload, data, event)
             await _RESEND_LIMITER.acquire()
             ok, data = await self._request('POST', endpoint, json=payload)
         return ok, data
+
+    def _notify_rate_limited(self, endpoint, payload, data, event):
+        """广播限频事件供插件记录 (best-effort, 不阻塞/不影响发送与补发)"""
+        try:
+            hooks = get_hook_manager()
+            if not hooks.has('rate_limited'):
+                return
+            info = {
+                'appid': self._appid,
+                'endpoint': endpoint,
+                'payload': payload,
+                'response': data,
+                'event': event,
+            }
+            asyncio.ensure_future(hooks.emit('rate_limited', info))
+        except Exception:
+            pass
 
     async def put(self, endpoint, **kwargs):
         return await self._request('PUT', endpoint, **kwargs)

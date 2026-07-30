@@ -129,7 +129,7 @@ class _SenderLogMixin:
             payload = hook_data.get('payload', payload)
             content = hook_data.get('content', content)
 
-        success, data = await self.post_json(endpoint, payload)
+        success, data = await self.post_json(endpoint, payload, event=event)
         if not success:
             code = data.get('code') if isinstance(data, dict) else None
             if code in _IGNORE_ERROR_CODES:
