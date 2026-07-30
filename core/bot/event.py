@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta
 
 from core.base.config import cfg
-from core.base.logger import FRAMEWORK, get_logger, report_error
+from core.base.logger import FRAMEWORK, get_logger, now_str, report_error
 from core.base.tasks import spawn
 from core.message.event import (
     FRIEND_ADD,
@@ -320,7 +320,7 @@ class EventHandlerMixin:
         if expire and now < expire:
             return
         self._full_access_cache[group_id] = now + _FULL_ACCESS_CACHE_TTL
-        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ts = now_str()
         bot.log_service.db_queue(
             'INSERT OR IGNORE INTO full_access_groups (group_id, first_seen) VALUES (?, ?)',
             (group_id, ts),
@@ -328,7 +328,7 @@ class EventHandlerMixin:
 
     def _record_bot_admin(self, bot, group_id):
         """记录机器人在该群为管理员"""
-        ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ts = now_str()
         bot.log_service.db_queue(
             'INSERT OR REPLACE INTO group_bot_admin (group_id, updated_at) VALUES (?, ?)',
             (group_id, ts),
