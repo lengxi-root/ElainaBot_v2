@@ -52,7 +52,7 @@ class WSClient:
         token_manager,
         on_event,
         *,
-        ack_interaction=None,
+        ack_interaction,
         reconnect_interval=5,
         max_reconnects=-1,
         custom_url='',
@@ -182,16 +182,9 @@ class WSClient:
 
     async def _ack_interaction_when_ready(self, event):
         """等待插件设置 code (或分发结束/超时) 后通过 HTTP PUT /interactions 回复 (与 WH 链路一致)。"""
+        code = await event.wait_ack_code()
         try:
-            code = await event.wait_ack_code()
-        except Exception:
-            code = 0
-        if self._ack_interaction is None:
-            return
-        try:
-            success, data = await self._ack_interaction(event, code)
-            if not success:
-                log.warning(f'[{self._appid}] 交互回调 ACK 失败: id={event.message_id} resp={data}')
+            await self._ack_interaction(event, code)
         except Exception as e:
             log.warning(f'[{self._appid}] 交互回调 ACK 异常: {e}')
 
