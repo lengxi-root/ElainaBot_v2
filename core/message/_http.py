@@ -1,12 +1,11 @@
 """HTTP 请求层 — Token 自动重试、API 基础方法"""
 
 import asyncio
-import json
 import random
 import time
 
 from core.base.config import cfg
-from core.base.logger import FRAMEWORK, get_logger, report_error_raw
+from core.base.logger import FRAMEWORK, get_logger
 from core.message.response import loads_raw_response
 from core.network.http_compat import HAS_HTTPX
 
@@ -185,12 +184,9 @@ class _HttpMixin:
                         f'[{self._appid}] 网络异常自动重试 {net_retries}/{_NET_MAX_RETRIES}: '
                         f'{type(e).__name__} {method} {endpoint}'
                     )
-                    report_error_raw(
-                        FRAMEWORK,
-                        '消息发送',
-                        content=f'网络异常自动重试 {net_retries}/{_NET_MAX_RETRIES}: {method} {endpoint}',
-                        tb=json.dumps(_describe_exception(e, method, endpoint), ensure_ascii=False, default=str),
-                        appid=self._appid,
+                    self._report_send_error(
+                        f'网络异常自动重试 {net_retries}/{_NET_MAX_RETRIES}: {method} {endpoint}',
+                        _describe_exception(e, method, endpoint),
                     )
                     await asyncio.sleep(_NET_RETRY_DELAY * net_retries)
                     continue
@@ -210,14 +206,7 @@ class _HttpMixin:
             and (payload.get('msg_id') or payload.get('event_id'))
         ):
             log.warning(f'[{self._appid}] 接口频率限制, 排队重发被动消息: POST {endpoint}')
-            report_error_raw(
-                FRAMEWORK,
-                '消息发送',
-                content=f'接口频率限制, 排队重发被动消息: POST {endpoint}',
-                tb=json.dumps(data, ensure_ascii=False, default=str) if data else '',
-                context=json.dumps(payload, ensure_ascii=False, default=str),
-                appid=self._appid,
-            )
+            self._report_send_error(f'接口频率限制, 排队重发被动消息: POST {endpoint}', data, payload)
             await _RESEND_LIMITER.acquire()
             ok, data = await self._request('POST', endpoint, json=payload)
         return ok, data
