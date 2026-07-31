@@ -54,6 +54,7 @@ class WSClient:
         token_manager,
         on_event,
         *,
+        ack_interaction=None,
         reconnect_interval=5,
         max_reconnects=-1,
         custom_url='',
@@ -63,6 +64,7 @@ class WSClient:
         self._appid = str(appid)
         self._tm = token_manager
         self._on_event = on_event
+        self._ack_interaction = ack_interaction
         self._reconnect_interval = reconnect_interval
         self._max_reconnects = max_reconnects
         self._custom_url = custom_url.strip() if custom_url else ''
@@ -181,11 +183,22 @@ class WSClient:
             log.error(f'[{self._appid}] 事件处理异常: {e}')
 
     async def _ack_interaction_when_ready(self, event, payload):
-        """等待插件设置 code (或分发结束/超时) 后发送 op12 ACK。"""
+        """等待插件设置 code (或分发结束/超时) 后回复交互回调。
+
+        WS 链路优先走 HTTP PUT /interactions/{id} (与官方协议一致),
+        失败时退回 op12 WS 帧。无插件设置 code 时默认回 0。
+        """
         try:
             code = await event.wait_ack_code()
         except Exception:
             code = 0
+        if self._ack_interaction is not None:
+            try:
+                success, _ = await self._ack_interaction(event, code)
+                if success:
+                    return
+            except Exception as e:
+                log.warning(f'[{self._appid}] 交互回调 HTTP ACK 异常: {e}')
         await self._send_event_ack(payload, code)
 
     async def _dispatch_with_backpressure(self, event):
