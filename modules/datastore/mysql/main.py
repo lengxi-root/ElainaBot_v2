@@ -69,17 +69,9 @@ async def _create_pool(connect_concurrency, minsize, pool_recycle, **conn_kwargs
             return None
 
         def release(self, conn):
-            """丢弃连接时唤醒 wait_closed, 正常归还由父类负责唤醒。"""
-            was_used = conn in self._used
-            was_closed = conn.closed
-            in_trans = not was_closed and conn.get_transaction_status()
-            free_size = self.freesize
+            """父类丢弃连接时不唤醒, 会让 wait_closed 挂住, 这里补一次。"""
+            discarded = conn in self._used and (conn.closed or conn.get_transaction_status())
             result = super().release(conn)
-            discarded = (
-                was_used
-                and self.freesize == free_size
-                and (not self._closing or was_closed or in_trans)
-            )
             if discarded:
                 wakeup = self._loop.create_task(self._wakeup())
                 wakeup.add_done_callback(lambda task: None if task.cancelled() else task.exception())
