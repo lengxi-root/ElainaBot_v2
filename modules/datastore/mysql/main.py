@@ -44,6 +44,17 @@ _COMMENTS = {
 }
 
 
+def _conn_broken(conn):
+    reader = conn._reader
+    return conn.closed or reader.at_eof() or reader.exception() or reader.eof_received
+
+
+async def _safe_rollback(conn):
+    if not conn.get_autocommit():
+        with contextlib.suppress(BaseException):
+            await conn.rollback()
+
+
 async def _create_pool(connect_concurrency, minsize, maxsize, pool_recycle, **conn_kwargs):
     """创建无饿死连接池 (aiomysql.Pool 子类)
 
@@ -58,9 +69,8 @@ async def _create_pool(connect_concurrency, minsize, maxsize, pool_recycle, **co
             """锁内调用: 剔除失效/超期空闲连接, 返回一个可复用连接或 None"""
             while self._free:
                 conn = self._free.popleft()
-                stale = conn._reader.at_eof() or conn._reader.exception() or conn._reader.eof_received
                 expired = self._recycle > -1 and self._loop.time() - conn.last_usage > self._recycle
-                if stale or expired:
+                if _conn_broken(conn) or expired:
                     conn.close()
                 else:
                     return conn
@@ -71,23 +81,12 @@ async def _create_pool(connect_concurrency, minsize, maxsize, pool_recycle, **co
             等待者, 池明明腾出了名额却让等待者一直挂到超时。这里补一次唤醒。
             """
             was_used = conn in self._used
+            free_size = self.freesize
             result = super().release(conn)
-            discarded = (
-                was_used
-                and conn not in self._free
-                and conn not in self._used
-                and not self._closing
-            )
-            if discarded:
+            if was_used and self.freesize == free_size and not self._closing:
                 wakeup = self._loop.create_task(self._wakeup())
-                wakeup.add_done_callback(self._consume_wakeup_error)
+                wakeup.add_done_callback(lambda task: None if task.cancelled() else task.exception())
             return result
-
-        @staticmethod
-        def _consume_wakeup_error(task):
-            if not task.cancelled():
-                with contextlib.suppress(BaseException):
-                    task.exception()
 
         async def _acquire(self):
             while True:
@@ -162,19 +161,9 @@ class _AcquireContext:
 
     async def __aexit__(self, *exc):
         if self._conn is not None:
-            if exc[0] is not None:
-                reader = getattr(self._conn, '_reader', None)
-                broken = (
-                    getattr(self._conn, 'closed', False)
-                    or (reader is not None and (
-                        reader.at_eof()
-                        or reader.exception()
-                        or getattr(reader, 'eof_received', False)
-                    ))
-                )
-                if broken:
-                    with contextlib.suppress(Exception):
-                        self._conn.close()
+            if exc[0] is not None and _conn_broken(self._conn):
+                with contextlib.suppress(Exception):
+                    self._conn.close()
             self._pool.release(self._conn)
             self._conn = None
         return False
@@ -265,9 +254,7 @@ class MySQLPool:
                     await conn.commit()
                 return rows
             except BaseException:
-                if not conn.get_autocommit():
-                    with contextlib.suppress(BaseException):
-                        await conn.rollback()
+                await _safe_rollback(conn)
                 raise
             finally:
                 if is_ddl:
@@ -285,9 +272,7 @@ class MySQLPool:
                     await conn.commit()
                 return rows
             except BaseException:
-                if not conn.get_autocommit():
-                    with contextlib.suppress(BaseException):
-                        await conn.rollback()
+                await _safe_rollback(conn)
                 raise
 
     async def fetch_one(self, sql, params=None):
@@ -361,8 +346,7 @@ class MySQLPool:
                 await conn.commit()
                 return True
             except BaseException as exc:
-                with contextlib.suppress(BaseException):
-                    await conn.rollback()
+                await _safe_rollback(conn)
                 if isinstance(exc, asyncio.CancelledError):
                     raise
                 self._log.error(f'MySQL 事务执行失败: {exc}')
