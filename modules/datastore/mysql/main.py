@@ -17,7 +17,7 @@ _DEFAULTS = {
     'database': '',
     'charset': 'utf8mb4',
     'minsize': 2,
-    'maxsize': 20,
+    'maxsize': 0,
     'connect_timeout': 10,
     'acquire_timeout': 10,
     'pool_recycle': 3600,
@@ -34,7 +34,7 @@ _COMMENTS = {
     'database': '数据库名称 (必填)',
     'charset': '字符集编码',
     'minsize': '连接池最小连接数',
-    'maxsize': '连接池最大连接数',
+    'maxsize': '连接池最大连接数, 0 为不限制',
     'connect_timeout': '连接超时 (秒)',
     'acquire_timeout': '获取连接超时 (秒), 连接池占满时快速报错而非无限等待',
     'pool_recycle': '连接回收周期 (秒), 超过该时长的空闲连接会被重建, 避免被服务器断开的死连接占坑',
@@ -146,7 +146,8 @@ class _AcquireContext:
                 pool = self._pool
                 self._log.error(
                     f'获取 MySQL 连接超时 ({self._timeout}s), 连接池占用: '
-                    f'used={len(pool._used)}/{pool.maxsize} free={pool.freesize} '
+                    f'used={len(pool._used)}/{"不限" if pool.maxsize == 0 else pool.maxsize} '
+                    f'free={pool.freesize} '
                     f'connecting={pool._acquiring}'
                 )
                 raise RuntimeError(f'MySQL 连接池获取超时 ({self._timeout}s)') from None
@@ -192,7 +193,7 @@ class MySQLPool:
             self._pool = await _create_pool(
                 connect_concurrency=int(self._cfg.get('connect_concurrency', 8)),
                 minsize=int(self._cfg.get('minsize', 2)),
-                maxsize=int(self._cfg.get('maxsize', 20)),
+                maxsize=int(self._cfg.get('maxsize', 0)),
                 pool_recycle=int(self._cfg.get('pool_recycle', 3600)),
                 host=self._cfg.get('host', '127.0.0.1'),
                 port=int(self._cfg.get('port', 3306)),
