@@ -50,9 +50,8 @@ def _conn_broken(conn):
 
 
 async def _safe_rollback(conn):
-    if not conn.get_autocommit():
-        with contextlib.suppress(BaseException):
-            await conn.rollback()
+    with contextlib.suppress(BaseException):
+        await conn.rollback()
 
 
 async def _create_pool(connect_concurrency, minsize, maxsize, pool_recycle, **conn_kwargs):
@@ -254,7 +253,8 @@ class MySQLPool:
                     await conn.commit()
                 return rows
             except BaseException:
-                await _safe_rollback(conn)
+                if not conn.get_autocommit():
+                    await _safe_rollback(conn)
                 raise
             finally:
                 if is_ddl:
@@ -272,7 +272,8 @@ class MySQLPool:
                     await conn.commit()
                 return rows
             except BaseException:
-                await _safe_rollback(conn)
+                if not conn.get_autocommit():
+                    await _safe_rollback(conn)
                 raise
 
     async def fetch_one(self, sql, params=None):
