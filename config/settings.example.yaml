@@ -19,6 +19,8 @@ network:
   max_keepalive: 100                         # 最大保活连接数
   pool_timeout: 10                           # 连接池耗尽时等待空闲连接的超时 (秒)
   # max_concurrency: 200                     # 单个机器人同时在途请求上限, 超出排队; 不配置时跟随 max_connections (0=不限制)
+  # rate_limit_resend: true                  # 是否开启接口限频后的被动消息补发
+  # rate_limit_resend_per_sec: 40            # 限频被动消息补发速率 (条/秒), 0=不节流
 
 # Web 面板
 web:

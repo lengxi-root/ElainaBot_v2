@@ -38,7 +38,7 @@ _MAX_MEDIA_DOWNLOAD = 100 * 1024 * 1024  # 100MB 下载上限, 防止 OOM
 _NET_MAX_RETRIES = 2
 _NET_RETRY_DELAY = 0.5  # 秒, 按次数线性递增
 _RATE_LIMIT_ERR_CODE = 40023001
-_RATE_LIMIT_RESEND_PER_SEC = 40  # 限频补发速率 (全局每秒条数)
+_RATE_LIMIT_RESEND_PER_SEC = 40  # 限频补发默认速率 (全局每秒条数)
 _VIOLATION_CODE = 40034006  # 消息内容违规
 _DEFAULT_MAX_CONNECTIONS = 200
 
@@ -71,7 +71,21 @@ class _ResendLimiter:
             await asyncio.sleep(slot - now)
 
 
-_RESEND_LIMITER = _ResendLimiter(_RATE_LIMIT_RESEND_PER_SEC)
+_resend_limiter = None
+_resend_limiter_config = None
+
+
+def _get_resend_limiter():
+    """按当前配置惰性获取限频补发配置与节流器"""
+    global _resend_limiter, _resend_limiter_config
+    net = cfg.get('settings', 'network') or {}
+    enabled = bool(net.get('rate_limit_resend', True))
+    per_sec = int(net.get('rate_limit_resend_per_sec', _RATE_LIMIT_RESEND_PER_SEC) or 0)
+    config = (enabled, per_sec)
+    if config != _resend_limiter_config:
+        _resend_limiter_config = config
+        _resend_limiter = _ResendLimiter(per_sec) if enabled and per_sec > 0 else None
+    return enabled, _resend_limiter
 
 
 def _msg_seq():
@@ -197,7 +211,7 @@ class _HttpMixin:
 
     async def post_json(self, endpoint, payload):
         ok, data = await self._request('POST', endpoint, json=payload)
-        # 频率限制: 仅被动消息 (带 msg_id/event_id) 重发一次, 全局按每秒 40 条节流, 同 msg_seq 平台会去重
+        # 频率限制: 仅被动消息 (带 msg_id/event_id) 重发一次, 同 msg_seq 平台会去重
         if (
             not ok
             and _is_rate_limited(data)
@@ -205,9 +219,14 @@ class _HttpMixin:
             and payload.get('msg_seq')
             and (payload.get('msg_id') or payload.get('event_id'))
         ):
-            log.warning(f'[{self._appid}] 接口频率限制, 排队重发被动消息: POST {endpoint}')
-            self._report_send_error(f'接口频率限制, 排队重发被动消息: POST {endpoint}', data, payload)
-            await _RESEND_LIMITER.acquire()
+            enabled, limiter = _get_resend_limiter()
+            msg = f'接口频率限制, 排队重发被动消息: POST {endpoint}' if enabled else f'接口频率限制: POST {endpoint}'
+            log.warning(f'[{self._appid}] {msg}')
+            self._report_send_error(msg, data, payload)
+            if not enabled:
+                return ok, data
+            if limiter:
+                await limiter.acquire()
             ok, data = await self._request('POST', endpoint, json=payload)
         return ok, data
 
